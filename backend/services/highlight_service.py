@@ -1,49 +1,141 @@
-def score_segment(segment):
+def score_text(text):
+
     score = 0
 
-    text = segment["text"].lower()
+    text = text.lower()
 
-    duration = segment["end"] - segment["start"]
-
-    if 20 <= duration <= 60:
-        score += 30
-
-    elif duration < 10:
-        score -= 50
-
-    # Emotsional so'zlar
     keywords = [
+
+        # surprise
         "wow",
         "no way",
-        "oh my god",
+        "what",
+        "wtf",
+        "impossible",
+        "unbelievable",
+
+        # excitement
+        "let's go",
+        "lets go",
+        "bro",
         "insane",
         "crazy",
-        "let's go",
-        "bro",
-        "what",
-        "wtf"
+        "actually",
+
+        # reaction
+        "oh my god",
+        "seriously",
+        "look",
+        "listen",
+
+        # challenge
+        "last",
+        "winner",
+        "lose",
+        "lost",
+        "won",
+
+        # money
+        "million",
+        "100000",
+        "1000000",
+        "$",
+        "money",
+
+        # emotion
+        "cry",
+        "laugh",
+        "dead",
+        "screaming"
     ]
 
+    # keyword score
     for word in keywords:
         if word in text:
-            score += 15
+            score += 25
 
-    # Undov belgisi
-    score += text.count("!") * 5
+    # word count
+    words = text.split()
+
+    if len(words) >= 12:
+        score += 15
+
+    elif len(words) <= 3:
+        score -= 20
+
+    # punctuation
+    score += text.count("!") * 8
+    score += text.count("?") * 6
 
     return score
 
 
 def get_best_segments(segments, top_n=10):
-    ranked = []
 
-    for seg in segments:
-        seg["score"] = score_segment(seg)
-        ranked.append(seg)
+    windows = []
 
-    ranked.sort(key=lambda x: x["score"], reverse=True)
+    window_size = 30
+    step = 15
 
-    return [
-        x for x in ranked[:top_n]
-        if x["end"] - x["start"] >= 15
-    ]
+    if not segments:
+        return []
+
+    total_duration = segments[-1]["end"]
+
+    current = 0
+
+    while current < total_duration:
+
+        end_time = current + window_size
+
+        text = ""
+
+        for seg in segments:
+
+            if seg["start"] >= current and seg["end"] <= end_time:
+                text += " " + seg["text"]
+
+        duration = end_time - current
+
+        if text.strip():
+
+            score = score_text(text)
+
+            if 20 <= duration <= 60:
+                score += 30
+
+            windows.append({
+
+                "start": current,
+                "end": end_time,
+                "text": text,
+                "score": score
+
+            })
+
+        current += step
+
+    windows.sort(
+        key=lambda x: x["score"],
+        reverse=True
+    )
+
+    selected = []
+
+    for w in windows:
+
+        overlap = False
+
+        for s in selected:
+
+            if abs(w["start"] - s["start"]) < 20:
+                overlap = True
+                break
+
+        if not overlap:
+            selected.append(w)
+
+        if len(selected) >= top_n:
+            break
+
+    return selected
