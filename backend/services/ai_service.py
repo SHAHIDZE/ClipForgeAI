@@ -1,5 +1,6 @@
 import os
 
+
 from backend.services.whisper_service import transcribe_video
 from backend.services.highlight_service import get_best_segments
 from backend.services.video_cut_service import (
@@ -55,20 +56,36 @@ def process_video(
     range_end=None,
     model=None,
     progress_callback=None,
+    cancel_check=None,
+    job_id=None,
 ):
+    """
+    AI video processing.
+
+    cancel_check:
+        Celery task DB'dagi job cancelled bo'lganini tekshiradi.
+        Har bir katta bosqichdan oldin/ketin chaqiriladi.
+
+    job_id:
+        Har bir job uchun unique output filename yaratish uchun ishlatiladi.
+    """
+
+    def check_cancel():
+        if cancel_check:
+            cancel_check()
 
     print()
     print("=" * 60)
     print("CLIPFORGE AI PROCESSING STARTED")
     print("=" * 60)
 
+    check_cancel()
+
     # ========================================================
-    # 0. VIDEO PATH
+    # VIDEO PATH
     # ========================================================
 
-    video_path = os.path.abspath(
-        video_path
-    )
+    video_path = os.path.abspath(video_path)
 
     print()
     print("INPUT VIDEO:")
@@ -81,6 +98,8 @@ def process_video(
 
     print("Video exists: YES")
 
+    check_cancel()
+
     # ========================================================
     # 1. TRANSCRIBE
     # ========================================================
@@ -91,6 +110,8 @@ def process_video(
     result = transcribe_video(
         video_path
     )
+
+    check_cancel()
 
     segments = result.get(
         "segments",
@@ -122,18 +143,14 @@ def process_video(
             "Video davomiyligini aniqlab bo'lmadi."
         )
 
-    total_duration = max(
-        valid_ends
-    )
+    total_duration = max(valid_ends)
 
     # ========================================================
     # RANGE
     # ========================================================
 
     try:
-        range_start = float(
-            range_start
-        )
+        range_start = float(range_start)
     except (
         TypeError,
         ValueError,
@@ -141,24 +158,15 @@ def process_video(
         range_start = 0.0
 
     if range_end is None:
-
         range_end = total_duration
-
     else:
-
         try:
-            range_end = float(
-                range_end
-            )
+            range_end = float(range_end)
         except (
             TypeError,
             ValueError,
         ):
             range_end = total_duration
-
-    # ========================================================
-    # SAFE LIMITS
-    # ========================================================
 
     range_start = max(
         0.0,
@@ -169,10 +177,6 @@ def process_video(
         total_duration,
         range_end,
     )
-
-    # ========================================================
-    # VALIDATE RANGE
-    # ========================================================
 
     if range_end <= range_start:
         raise ValueError(
@@ -191,16 +195,16 @@ def process_video(
 
     print()
     print("USER SELECTED RANGE:")
-
     print(
         f"{range_start:.2f}s -> "
         f"{range_end:.2f}s"
     )
-
     print(
         f"Duration: "
         f"{selected_duration:.2f}s"
     )
+
+    check_cancel()
 
     # ========================================================
     # 2. FIND HIGHLIGHTS
@@ -217,15 +221,15 @@ def process_video(
         range_end=range_end,
     )
 
+    check_cancel()
+
     if not best_segments:
         raise ValueError(
             "Tanlangan vaqt oralig'ida "
             "yaxshi highlight topilmadi."
         )
 
-    total_shorts = len(
-        best_segments
-    )
+    total_shorts = len(best_segments)
 
     print()
     print(
@@ -233,13 +237,7 @@ def process_video(
         f"{total_shorts}"
     )
 
-    # ========================================================
-    # GENERATING START
-    # 40%
-    # ========================================================
-
     if progress_callback:
-
         progress_callback(
             40,
             generated=0,
@@ -253,6 +251,27 @@ def process_video(
     files = []
 
     # ========================================================
+    # UNIQUE JOB PREFIX
+    # ========================================================
+    #
+    # Eski:
+    #   short_1.mp4
+    #
+    # Muammo:
+    #   2 ta job bir xil filename ishlatishi mumkin.
+    #
+    # Yangi:
+    #   job_123_short_1.mp4
+    #
+    # ========================================================
+
+    job_prefix = (
+        f"job_{job_id}_"
+        if job_id is not None
+        else "job_unknown_"
+    )
+
+    # ========================================================
     # 3. CREATE SHORTS
     # ========================================================
 
@@ -260,6 +279,7 @@ def process_video(
         best_segments,
         start=1,
     ):
+        check_cancel()
 
         print()
         print("=" * 60)
@@ -268,12 +288,6 @@ def process_video(
             f"{index}/{total_shorts}"
         )
         print("=" * 60)
-
-        # ====================================================
-        # SHORT PROGRESS RANGE
-        #
-        # 40% -> 90%
-        # ====================================================
 
         short_start_progress = (
             40
@@ -293,21 +307,14 @@ def process_video(
             * 50
         )
 
-        # ----------------------------------------------------
-        # CURRENT SHORT START
-        # ----------------------------------------------------
-
         if progress_callback:
-
             progress_callback(
-                int(
-                    round(
-                        short_start_progress
-                    )
-                ),
+                int(round(short_start_progress)),
                 generated=index - 1,
                 total=total_shorts,
             )
+
+        check_cancel()
 
         # ====================================================
         # CLIP TIME
@@ -331,9 +338,7 @@ def process_video(
             end,
         )
 
-        duration = (
-            end - start
-        )
+        duration = end - start
 
         print(
             f"Clip: "
@@ -356,7 +361,7 @@ def process_video(
         # ====================================================
 
         base_name = (
-            f"short_{index}"
+            f"{job_prefix}short_{index}"
         )
 
         raw_name = (
@@ -390,31 +395,25 @@ def process_video(
         # CLEAN OLD FILES
         # ====================================================
 
-        for old_file in [
+        for old_file in (
             raw_path,
             final_path,
             subtitle_path,
-        ]:
-
-            if os.path.exists(
-                old_file
-            ):
-
+        ):
+            if os.path.exists(old_file):
                 try:
-                    os.remove(
-                        old_file
-                    )
+                    os.remove(old_file)
                 except Exception:
                     pass
 
+        check_cancel()
+
         # ====================================================
-        # 3.1 CUT VIDEO
+        # CUT VIDEO
         # ====================================================
 
         print()
-        print(
-            "Cutting video..."
-        )
+        print("Cutting video...")
 
         cut_video(
             input_file=video_path,
@@ -423,9 +422,9 @@ def process_video(
             output_name=raw_name,
         )
 
-        if not os.path.isfile(
-            raw_path
-        ):
+        check_cancel()
+
+        if not os.path.isfile(raw_path):
             raise FileNotFoundError(
                 f"Raw video yaratilmadi:\n"
                 f"{raw_path}"
@@ -437,7 +436,7 @@ def process_video(
         )
 
         # ====================================================
-        # 3.2 WORD DATA
+        # WORD DATA
         # ====================================================
 
         segment_words = segment.get(
@@ -450,20 +449,22 @@ def process_video(
             f"{len(segment_words)}"
         )
 
+        check_cancel()
+
         # ====================================================
-        # 3.3 CREATE SUBTITLE
+        # CREATE SUBTITLE
         # ====================================================
 
         print()
-        print(
-            "Creating subtitles..."
-        )
+        print("Creating subtitles...")
 
         create_subtitles(
             [segment],
             subtitle_path,
             time_offset=start,
         )
+
+        check_cancel()
 
         if not os.path.isfile(
             subtitle_path
@@ -479,19 +480,19 @@ def process_video(
         )
 
         # ====================================================
-        # 3.4 BURN SUBTITLE
+        # BURN SUBTITLE
         # ====================================================
 
         print()
-        print(
-            "Burning subtitles..."
-        )
+        print("Burning subtitles...")
 
         burn_subtitles(
             input_video=raw_path,
             subtitle_file=subtitle_path,
             output_video=final_path,
         )
+
+        check_cancel()
 
         if not os.path.isfile(
             final_path
@@ -507,51 +508,29 @@ def process_video(
         )
 
         # ====================================================
-        # DELETE RAW
+        # DELETE TEMP FILES
         # ====================================================
 
-        if os.path.exists(
-            raw_path
+        for temp_file in (
+            raw_path,
+            subtitle_path,
         ):
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except Exception:
+                    pass
 
-            try:
-                os.remove(
-                    raw_path
-                )
-            except Exception:
-                pass
-
-        # ====================================================
-        # DELETE ASS
-        # ====================================================
-
-        if os.path.exists(
-            subtitle_path
-        ):
-
-            try:
-                os.remove(
-                    subtitle_path
-                )
-            except Exception:
-                pass
+        check_cancel()
 
         # ====================================================
         # SAVE RESULT
         # ====================================================
 
-        files.append(
-            final_name
-        )
-
-        # ====================================================
-        # REAL SHORT PROGRESS
-        # ====================================================
+        files.append(final_name)
 
         progress = int(
-            round(
-                short_end_progress
-            )
+            round(short_end_progress)
         )
 
         progress = max(
@@ -563,12 +542,13 @@ def process_video(
         )
 
         if progress_callback:
-
             progress_callback(
                 progress,
                 generated=index,
                 total=total_shorts,
             )
+
+        check_cancel()
 
         print()
         print(
@@ -581,23 +561,27 @@ def process_video(
     # FINISHED
     # ========================================================
 
+    check_cancel()
+
+    if progress_callback:
+        progress_callback(
+            95,
+            generated=len(files),
+            total=total_shorts,
+        )
+
     print()
     print("=" * 60)
-    print(
-        "CLIPFORGE AI PROCESSING COMPLETED"
-    )
-
+    print("CLIPFORGE AI PROCESSING COMPLETED")
     print(
         f"Selected range: "
         f"{range_start:.2f}s -> "
         f"{range_end:.2f}s"
     )
-
     print(
         f"Generated quality shorts: "
         f"{len(files)}"
     )
-
     print("=" * 60)
 
     return files

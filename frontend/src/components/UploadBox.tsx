@@ -8,7 +8,6 @@ import {
 
 import Loading from "./Loading";
 import VideoCard from "./VideoCard";
-import UploadArea from "./UploadArea";
 
 import {
   uploadVideo,
@@ -30,45 +29,25 @@ type RangeProps = {
 };
 
 // ============================================================
-// TIME FORMAT
+// TIME
 // ============================================================
 
 function formatTime(seconds: number) {
-  const total = Math.max(
-    0,
-    Math.floor(seconds)
-  );
+  const total = Math.max(0, Math.floor(seconds));
 
-  const hours = Math.floor(
-    total / 3600
-  );
-
-  const minutes = Math.floor(
-    (total % 3600) / 60
-  );
-
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
   const secs = total % 60;
 
   if (hours > 0) {
-    return `${String(hours).padStart(
-      2,
-      "0"
-    )}:${String(minutes).padStart(
-      2,
-      "0"
-    )}:${String(secs).padStart(
-      2,
-      "0"
-    )}`;
+    return `${String(hours).padStart(2, "0")}:${String(
+      minutes
+    ).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   }
 
-  return `${String(minutes).padStart(
-    2,
-    "0"
-  )}:${String(secs).padStart(
-    2,
-    "0"
-  )}`;
+  return `${String(minutes).padStart(2, "0")}:${String(
+    secs
+  ).padStart(2, "0")}`;
 }
 
 // ============================================================
@@ -81,13 +60,9 @@ function ClipRange({
   endTime,
   onChange,
 }: RangeProps) {
-  const trackRef =
-    useRef<HTMLDivElement | null>(null);
+  const trackRef = useRef<HTMLDivElement | null>(null);
 
-  const maxRange = Math.min(
-    duration,
-    3600
-  );
+  const maxRange = Math.min(duration, 3600);
 
   const selectedDuration = Math.max(
     0,
@@ -95,119 +70,72 @@ function ClipRange({
   );
 
   const startPercent =
-    duration > 0
-      ? (startTime / duration) * 100
-      : 0;
+    duration > 0 ? (startTime / duration) * 100 : 0;
 
   const endPercent =
-    duration > 0
-      ? (endTime / duration) * 100
-      : 0;
+    duration > 0 ? (endTime / duration) * 100 : 0;
 
-  // ----------------------------------------------------------
-  // POINTER → TIME
-  // ----------------------------------------------------------
+  function getValueFromPointer(clientX: number) {
+    const track = trackRef.current;
 
-  function getValueFromPointer(
-    clientX: number
-  ) {
-    const track =
-      trackRef.current;
-
-    if (
-      !track ||
-      duration <= 0
-    ) {
+    if (!track || duration <= 0) {
       return 0;
     }
 
-    const rect =
-      track.getBoundingClientRect();
+    const rect = track.getBoundingClientRect();
 
     if (rect.width <= 0) {
       return 0;
     }
 
     let percent =
-      (clientX - rect.left) /
-      rect.width;
+      (clientX - rect.left) / rect.width;
 
     percent = Math.max(
       0,
       Math.min(1, percent)
     );
 
-    return Math.round(
-      percent * duration
-    );
+    return Math.round(percent * duration);
   }
-
-  // ----------------------------------------------------------
-  // UPDATE HANDLE
-  // ----------------------------------------------------------
 
   function updateFromPointer(
     clientX: number,
     type: "start" | "end"
   ) {
-    const value =
-      getValueFromPointer(clientX);
+    const value = getValueFromPointer(clientX);
 
     if (type === "start") {
-      const maxStart =
-        endTime - 1;
+      const maxStart = endTime - 1;
 
-      const newStart =
-        Math.max(
-          0,
-          Math.min(
-            value,
-            maxStart
-          )
-        );
-
-      onChange(
-        newStart,
-        endTime
+      const newStart = Math.max(
+        0,
+        Math.min(value, maxStart)
       );
 
+      onChange(newStart, endTime);
       return;
     }
 
-    const minEnd =
-      startTime + 1;
+    const minEnd = startTime + 1;
 
-    const maxEnd =
-      Math.min(
-        duration,
-        startTime + maxRange
-      );
-
-    const newEnd =
-      Math.max(
-        minEnd,
-        Math.min(
-          value,
-          maxEnd
-        )
-      );
-
-    onChange(
-      startTime,
-      newEnd
+    const maxEnd = Math.min(
+      duration,
+      startTime + maxRange
     );
-  }
 
-  // ----------------------------------------------------------
-  // DRAG
-  // ----------------------------------------------------------
+    const newEnd = Math.max(
+      minEnd,
+      Math.min(value, maxEnd)
+    );
+
+    onChange(startTime, newEnd);
+  }
 
   function startDrag(
     type: "start" | "end"
   ) {
-    function handleMove(
-      event: PointerEvent
-    ) {
+    function handleMove(event: PointerEvent) {
       updateFromPointer(
         event.clientX,
         type
@@ -237,12 +165,8 @@ function ClipRange({
     );
   }
 
-  // ----------------------------------------------------------
-  // TRACK CLICK
-  // ----------------------------------------------------------
-
   function handleTrackPointerDown(
-    event: React.PointerEvent<HTMLDivElement>
+    event: React.PointerEvent
   ) {
     const value =
       getValueFromPointer(
@@ -250,18 +174,13 @@ function ClipRange({
       );
 
     const distanceToStart =
-      Math.abs(
-        value - startTime
-      );
+      Math.abs(value - startTime);
 
     const distanceToEnd =
-      Math.abs(
-        value - endTime
-      );
+      Math.abs(value - endTime);
 
     const nearest =
-      distanceToStart <=
-      distanceToEnd
+      distanceToStart <= distanceToEnd
         ? "start"
         : "end";
 
@@ -272,66 +191,67 @@ function ClipRange({
   }
 
   return (
-    <div className="mt-8 rounded-3xl border border-zinc-800 bg-zinc-950/60 p-6">
+    <div className="rounded-3xl border border-zinc-800/80 bg-[#0d0d10] p-5 shadow-xl shadow-black/20 md:p-7">
+
       {/* HEADER */}
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600/15 text-lg">
-              ✂️
-            </div>
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
 
-            <div>
-              <h3 className="text-lg font-black text-white">
-                Select Clip Range
-              </h3>
+        <div className="flex items-start gap-4">
 
-              <p className="text-sm text-zinc-500">
-                Choose the part AI should process
-              </p>
-            </div>
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-violet-500/20 bg-violet-500/10 text-xl">
+            ✂️
           </div>
+
+          <div>
+            <h3 className="text-lg font-black text-white">
+              Select Clip Range
+            </h3>
+
+            <p className="mt-1 text-sm text-zinc-500">
+              Choose the part AI should process
+            </p>
+          </div>
+
         </div>
 
-        <div className="rounded-xl border border-violet-500/20 bg-violet-600/10 px-4 py-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+        <div className="rounded-2xl border border-violet-500/20 bg-violet-500/10 px-4 py-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">
             Selected
-          </span>
+          </p>
 
-          <p className="mt-0.5 text-sm font-black text-violet-400">
-            {formatTime(
-              selectedDuration
-            )}
+          <p className="mt-1 text-lg font-black text-violet-400">
+            {formatTime(selectedDuration)}
           </p>
         </div>
+
       </div>
 
-      {/* SLIDER */}
+      {/* RANGE */}
 
       <div className="mt-8">
+
         <div
           ref={trackRef}
-          onPointerDown={
-            handleTrackPointerDown
-          }
-          className="relative h-12 w-full cursor-pointer touch-none"
+          onPointerDown={handleTrackPointerDown}
+          className="relative h-14 w-full cursor-pointer touch-none"
         >
-          {/* BACKGROUND */}
 
-          <div className="absolute left-0 right-0 top-1/2 h-2 -translate-y-1/2 rounded-full bg-zinc-800" />
+          {/* TRACK */}
+
+          <div className="absolute left-0 right-0 top-1/2 h-2.5 -translate-y-1/2 rounded-full bg-zinc-800" />
 
           {/* SELECTED */}
 
           <div
-            className="pointer-events-none absolute top-1/2 h-2 -translate-y-1/2 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 shadow-lg shadow-violet-900/30"
+            className="pointer-events-none absolute top-1/2 h-2.5 -translate-y-1/2 rounded-full bg-gradient-to-r from-violet-600 via-purple-500 to-fuchsia-500 shadow-lg shadow-violet-950/40"
             style={{
               left: `${startPercent}%`,
               right: `${100 - endPercent}%`,
             }}
           />
 
-          {/* START HANDLE */}
+          {/* START */}
 
           <button
             type="button"
@@ -339,16 +259,15 @@ function ClipRange({
             onPointerDown={(event) => {
               event.preventDefault();
               event.stopPropagation();
-
               startDrag("start");
             }}
-            className="absolute top-1/2 z-30 h-8 w-8 -translate-x-1/2 -translate-y-1/2 cursor-grab rounded-full border-4 border-violet-400 bg-white shadow-xl shadow-violet-950/50 transition-transform hover:scale-110 active:cursor-grabbing active:scale-125"
+            className="absolute top-1/2 z-30 h-9 w-9 -translate-x-1/2 -translate-y-1/2 cursor-grab rounded-full border-4 border-violet-400 bg-white shadow-xl shadow-violet-950/60 transition-transform hover:scale-110 active:cursor-grabbing active:scale-125"
             style={{
               left: `${startPercent}%`,
             }}
           />
 
-          {/* END HANDLE */}
+          {/* END */}
 
           <button
             type="button"
@@ -356,22 +275,24 @@ function ClipRange({
             onPointerDown={(event) => {
               event.preventDefault();
               event.stopPropagation();
-
               startDrag("end");
             }}
-            className="absolute top-1/2 z-40 h-8 w-8 -translate-x-1/2 -translate-y-1/2 cursor-grab rounded-full border-4 border-fuchsia-400 bg-white shadow-xl shadow-fuchsia-950/50 transition-transform hover:scale-110 active:cursor-grabbing active:scale-125"
+            className="absolute top-1/2 z-40 h-9 w-9 -translate-x-1/2 -translate-y-1/2 cursor-grab rounded-full border-4 border-fuchsia-400 bg-white shadow-xl shadow-fuchsia-950/60 transition-transform hover:scale-110 active:cursor-grabbing active:scale-125"
             style={{
               left: `${endPercent}%`,
             }}
           />
+
         </div>
+
       </div>
 
-      {/* TIME */}
+      {/* TIME CARDS */}
 
-      <div className="mt-5 grid grid-cols-2 gap-3">
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
+      <div className="mt-4 grid grid-cols-2 gap-3">
+
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">
             Start
           </p>
 
@@ -380,8 +301,8 @@ function ClipRange({
           </p>
         </div>
 
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">
             End
           </p>
 
@@ -389,11 +310,12 @@ function ClipRange({
             {formatTime(endTime)}
           </p>
         </div>
+
       </div>
 
       {/* INFO */}
 
-      <div className="mt-4 flex items-center justify-between text-xs text-zinc-600">
+      <div className="mt-4 flex items-center justify-between text-[11px] font-semibold text-zinc-600">
         <span>0:00</span>
 
         <span>
@@ -405,161 +327,126 @@ function ClipRange({
         </span>
       </div>
 
-      {/* HELP */}
+      {/* TIP */}
 
-      <div className="mt-5 rounded-2xl border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-center text-xs text-zinc-500">
-        Drag the{" "}
-        <span className="font-bold text-violet-400">
-          left handle
-        </span>{" "}
-        to set start and the{" "}
-        <span className="font-bold text-fuchsia-400">
-          right handle
-        </span>{" "}
-        to set end.
+      <div className="mt-5 flex items-center justify-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/40 px-4 py-3 text-xs text-zinc-500">
+        <span>💡</span>
+
+        <span>
+          Drag the{" "}
+          <b className="text-violet-400">
+            left handle
+          </b>{" "}
+          and{" "}
+          <b className="text-fuchsia-400">
+            right handle
+          </b>{" "}
+          to choose your clip.
+        </span>
       </div>
+
     </div>
   );
 }
 
 // ============================================================
-// MAIN UPLOAD BOX
+// MAIN
 // ============================================================
 
 export default function UploadBox() {
-  // ==========================================================
-  // VIDEO
-  // ==========================================================
 
-  const [
-    videos,
-    setVideos,
-  ] = useState<string[]>([]);
+  const [videos, setVideos] =
+    useState<string[]>([]);
 
-  const [
-    file,
-    setFile,
-  ] = useState<File | null>(null);
+  const [file, setFile] =
+    useState<File | null>(null);
 
-  const [
-    filename,
-    setFilename,
-  ] = useState<string | null>(null);
+  const [filename, setFilename] =
+    useState<string | null>(null);
 
-  // ==========================================================
-  // RANGE
-  // ==========================================================
+  const [duration, setDuration] =
+    useState(0);
 
-  const [
-    duration,
-    setDuration,
-  ] = useState(0);
+  const [startTime, setStartTime] =
+    useState(0);
 
-  const [
-    startTime,
-    setStartTime,
-  ] = useState(0);
+  const [endTime, setEndTime] =
+    useState(0);
 
-  const [
-    endTime,
-    setEndTime,
-  ] = useState(0);
+  const [loading, setLoading] =
+    useState(false);
 
-  // ==========================================================
-  // PROCESSING
-  // ==========================================================
+  const [status, setStatus] =
+    useState("Waiting...");
 
-  const [
-    loading,
-    setLoading,
-  ] = useState(false);
+  const [progress, setProgress] =
+    useState(0);
 
-  const [
-    status,
-    setStatus,
-  ] = useState(
-    "Waiting..."
-  );
+  const [videoPreview, setVideoPreview] =
+    useState<string | null>(null);
 
-  const [
-    progress,
-    setProgress,
-  ] = useState(0);
+  const [url, setUrl] =
+    useState("");
+
+  const [urlMode, setUrlMode] =
+    useState(false);
 
   const progressRef =
     useRef(0);
 
   const animationRef =
-    useRef<ReturnType<
-      typeof setInterval
-    > | null>(null);
+    useRef<ReturnType<typeof setInterval> | null>(
+      null
+    );
 
   // ==========================================================
-  // STOP PROGRESS
+  // PROGRESS
   // ==========================================================
 
   function stopProgressAnimation() {
-    if (
-      animationRef.current
-    ) {
+    if (animationRef.current) {
       clearInterval(
         animationRef.current
       );
 
-      animationRef.current =
-        null;
+      animationRef.current = null;
     }
   }
-
-  // ==========================================================
-  // START FAKE PROGRESS
-  // ==========================================================
 
   function startProgressAnimation() {
     stopProgressAnimation();
 
     animationRef.current =
       setInterval(() => {
-        setProgress(
-          (current) => {
-            if (
-              current >= 88
-            ) {
-              return current;
-            }
+        setProgress((current) => {
 
-            let increase =
-              0.4;
-
-            if (
-              current < 50
-            ) {
-              increase = 0.8;
-            } else if (
-              current < 65
-            ) {
-              increase = 0.5;
-            } else if (
-              current < 80
-            ) {
-              increase = 0.25;
-            } else {
-              increase = 0.1;
-            }
-
-            const next =
-              Math.min(
-                88,
-                current +
-                  increase
-              );
-
-            progressRef.current =
-              next;
-
-            return next;
+          if (current >= 88) {
+            return current;
           }
-        );
+
+          let increase = 0.4;
+
+          if (current < 50) {
+            increase = 0.8;
+          } else if (current < 65) {
+            increase = 0.5;
+          } else if (current < 80) {
+            increase = 0.25;
+          } else {
+            increase = 0.1;
+          }
+
+          const next =
+            Math.min(
+              88,
+              current + increase
+            );
+
+          progressRef.current =
+            next;
+
+          return next;
+        });
       }, 1000);
   }
 
@@ -570,8 +457,14 @@ export default function UploadBox() {
   useEffect(() => {
     return () => {
       stopProgressAnimation();
+
+      if (videoPreview) {
+        URL.revokeObjectURL(
+          videoPreview
+        );
+      }
     };
-  }, []);
+  }, [videoPreview]);
 
   // ==========================================================
   // RESET
@@ -579,6 +472,12 @@ export default function UploadBox() {
 
   function resetProject() {
     stopProgressAnimation();
+
+    if (videoPreview) {
+      URL.revokeObjectURL(
+        videoPreview
+      );
+    }
 
     setFile(null);
     setFilename(null);
@@ -591,29 +490,26 @@ export default function UploadBox() {
     setProgress(0);
     progressRef.current = 0;
 
-    setStatus(
-      "Waiting..."
-    );
+    setStatus("Waiting...");
 
     setLoading(false);
+
+    setVideoPreview(null);
+
+    setUrl("");
+    setUrlMode(false);
   }
 
   // ==========================================================
-  // ANALYZE RESULT
+  // VIDEO INFO
   // ==========================================================
 
-  function applyVideoInfo(
-    info: any
-  ) {
+  function applyVideoInfo(info: any) {
     const videoDuration =
-      Number(
-        info?.duration
-      );
+      Number(info?.duration);
 
     if (
-      !Number.isFinite(
-        videoDuration
-      ) ||
+      !Number.isFinite(videoDuration) ||
       videoDuration <= 0
     ) {
       throw new Error(
@@ -644,6 +540,21 @@ export default function UploadBox() {
   ) {
     stopProgressAnimation();
 
+    if (videoPreview) {
+      URL.revokeObjectURL(
+        videoPreview
+      );
+    }
+
+    const previewUrl =
+      URL.createObjectURL(
+        selectedFile
+      );
+
+    setVideoPreview(
+      previewUrl
+    );
+
     setFile(
       selectedFile
     );
@@ -665,8 +576,6 @@ export default function UploadBox() {
     progressRef.current = 5;
 
     try {
-      // UPLOAD
-
       const uploaded =
         await uploadVideo(
           selectedFile
@@ -687,8 +596,6 @@ export default function UploadBox() {
         uploadedFilename
       );
 
-      // ANALYZE
-
       setStatus(
         "Analyzing video..."
       );
@@ -706,11 +613,10 @@ export default function UploadBox() {
       setProgress(15);
       progressRef.current = 15;
 
-      setStatus(
-        "Ready"
-      );
+      setStatus("Ready");
 
       setLoading(false);
+
     } catch (error) {
       console.error(
         "Upload/analyze error:",
@@ -719,9 +625,7 @@ export default function UploadBox() {
 
       resetProject();
 
-      setStatus(
-        "Error"
-      );
+      setStatus("Error");
 
       alert(
         error instanceof Error
@@ -736,8 +640,22 @@ export default function UploadBox() {
   // ==========================================================
 
   async function handleUrlSubmit(
-    url: string
+    submittedUrl?: string
   ) {
+    const targetUrl =
+      (
+        submittedUrl ??
+        url
+      ).trim();
+
+    if (!targetUrl) {
+      alert(
+        "Video URL kiriting."
+      );
+
+      return;
+    }
+
     stopProgressAnimation();
 
     setLoading(true);
@@ -758,11 +676,9 @@ export default function UploadBox() {
     progressRef.current = 5;
 
     try {
-      // DOWNLOAD
-
       const result =
         await downloadVideoFromUrl(
-          url
+          targetUrl
         );
 
       if (
@@ -779,8 +695,6 @@ export default function UploadBox() {
       setFilename(
         downloadedFilename
       );
-
-      // ANALYZE
 
       setStatus(
         "Analyzing video..."
@@ -799,18 +713,15 @@ export default function UploadBox() {
       setProgress(15);
       progressRef.current = 15;
 
-      setStatus(
-        "Ready"
-      );
+      setStatus("Ready");
 
       setLoading(false);
+
     } catch (error) {
       console.error(
         "URL error:",
         error
       );
-
-      stopProgressAnimation();
 
       setFilename(null);
       setDuration(0);
@@ -820,9 +731,7 @@ export default function UploadBox() {
       setProgress(0);
       progressRef.current = 0;
 
-      setStatus(
-        "Error"
-      );
+      setStatus("Error");
 
       setLoading(false);
 
@@ -847,9 +756,7 @@ export default function UploadBox() {
       return;
     }
 
-    if (
-      duration <= 0
-    ) {
+    if (duration <= 0) {
       alert(
         "Video davomiyligi aniqlanmadi."
       );
@@ -857,9 +764,7 @@ export default function UploadBox() {
       return;
     }
 
-    if (
-      endTime <= startTime
-    ) {
+    if (endTime <= startTime) {
       alert(
         "Video oralig'i noto'g'ri."
       );
@@ -897,6 +802,7 @@ export default function UploadBox() {
         startTime,
         endTime
       );
+
     } catch (error) {
       console.error(
         "Generation error:",
@@ -905,9 +811,7 @@ export default function UploadBox() {
 
       stopProgressAnimation();
 
-      setStatus(
-        "Error"
-      );
+      setStatus("Error");
 
       setProgress(0);
       progressRef.current = 0;
@@ -944,8 +848,7 @@ export default function UploadBox() {
       selectedEnd
     );
 
-    let finished =
-      false;
+    let finished = false;
 
     while (!finished) {
       await new Promise(
@@ -966,8 +869,6 @@ export default function UploadBox() {
         result
       );
 
-      // ERROR
-
       if (
         result.status ===
         "error"
@@ -979,8 +880,6 @@ export default function UploadBox() {
             "Video processingda xatolik yuz berdi."
         );
       }
-
-      // BACKEND PROGRESS
 
       if (
         typeof result.progress ===
@@ -1010,8 +909,6 @@ export default function UploadBox() {
           }
         );
       }
-
-      // STATUS
 
       switch (
         result.step
@@ -1083,8 +980,6 @@ export default function UploadBox() {
           }
       }
 
-      // COMPLETED
-
       if (
         result.status ===
         "completed"
@@ -1102,8 +997,7 @@ export default function UploadBox() {
           !Array.isArray(
             result.files
           ) ||
-          result.files.length ===
-            0
+          result.files.length === 0
         ) {
           throw new Error(
             "Hech qanday short yaratilmadi."
@@ -1121,54 +1015,226 @@ export default function UploadBox() {
     }
   }
 
+  const ready =
+    Boolean(
+      filename &&
+      duration > 0
+    );
+
   // ==========================================================
   // UI
   // ==========================================================
 
-  const ready =
-    Boolean(
-      filename &&
-        duration > 0
-    );
-
   return (
     <div className="space-y-8">
+
       {/* ======================================================
-          TITLE
+          HERO
       ====================================================== */}
 
-      <div className="text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-violet-500/20 bg-violet-600/10 text-2xl">
-          ✨
-        </div>
+      {!ready &&
+        !loading &&
+        videos.length === 0 && (
+          <div className="text-center">
 
-        <h2 className="text-3xl font-black tracking-tight text-white md:text-4xl">
-          Generate AI Shorts
-        </h2>
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl border border-violet-500/20 bg-gradient-to-br from-violet-500/15 to-fuchsia-500/10 text-3xl shadow-xl shadow-violet-950/20">
+              ✨
+            </div>
 
-        <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-zinc-500">
-          Upload a video and let
-          ClipForge AI find the
-          best moments for
-          short-form content.
-        </p>
-      </div>
+            <h2 className="text-3xl font-black tracking-tight text-white md:text-4xl">
+              Generate AI Shorts
+            </h2>
+
+            <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-zinc-500">
+              Upload a video and let
+              ClipForge AI find the
+              best moments for
+              short-form content.
+            </p>
+
+          </div>
+        )}
 
       {/* ======================================================
-          UPLOAD
+          UPLOAD CARD
       ====================================================== */}
 
       {!loading &&
         !ready &&
         videos.length === 0 && (
-          <UploadArea
-            onSelect={
-              handleFileSelect
-            }
-            onUrlSubmit={
-              handleUrlSubmit
-            }
-          />
+
+          <div className="overflow-hidden rounded-3xl border border-zinc-800 bg-[#0c0c0f] shadow-2xl shadow-black/30">
+
+            {/* TABS */}
+
+            <div className="border-b border-zinc-800 bg-zinc-950/50 p-2">
+
+              <div className="grid grid-cols-2 gap-2">
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setUrlMode(false)
+                  }
+                  className={`rounded-2xl px-4 py-3 text-sm font-bold transition ${
+                    !urlMode
+                      ? "bg-white text-black shadow-lg"
+                      : "text-zinc-500 hover:bg-zinc-900 hover:text-white"
+                  }`}
+                >
+                  📁 Upload Video
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setUrlMode(true)
+                  }
+                  className={`rounded-2xl px-4 py-3 text-sm font-bold transition ${
+                    urlMode
+                      ? "bg-white text-black shadow-lg"
+                      : "text-zinc-500 hover:bg-zinc-900 hover:text-white"
+                  }`}
+                >
+                  🔗 Video Link
+                </button>
+
+              </div>
+
+            </div>
+
+            {!urlMode ? (
+
+              /* FILE UPLOAD */
+
+              <label
+                htmlFor="clipforge-video-upload"
+                className="group block cursor-pointer p-6 md:p-10"
+              >
+
+                <div className="rounded-3xl border border-dashed border-zinc-700 bg-zinc-950/60 px-6 py-12 text-center transition-all duration-300 group-hover:border-violet-500/50 group-hover:bg-violet-500/[0.03]">
+
+                  <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl border border-zinc-800 bg-zinc-900 text-3xl shadow-xl transition-transform duration-300 group-hover:scale-105 group-hover:border-violet-500/30">
+                    📹
+                  </div>
+
+                  <h3 className="mt-6 text-lg font-black text-white">
+                    Drag & Drop your video
+                  </h3>
+
+                  <p className="mt-2 text-sm text-zinc-500">
+                    or{" "}
+                    <span className="font-bold text-violet-400">
+                      click to browse
+                    </span>
+                  </p>
+
+                  <div className="mt-6 flex flex-wrap justify-center gap-2">
+                    {[
+                      "MP4",
+                      "MOV",
+                      "AVI",
+                      "MKV",
+                    ].map(
+                      (format) => (
+                        <span
+                          key={format}
+                          className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-[10px] font-bold text-zinc-500"
+                        >
+                          {format}
+                        </span>
+                      )
+                    )}
+                  </div>
+
+                  <p className="mt-5 text-xs text-zinc-700">
+                    Video files only
+                  </p>
+
+                </div>
+
+                <input
+                  id="clipforge-video-upload"
+                  type="file"
+                  accept="video/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    const selected =
+                      event.target.files?.[0];
+
+                    if (selected) {
+                      handleFileSelect(
+                        selected
+                      );
+                    }
+                  }}
+                />
+
+              </label>
+
+            ) : (
+
+              /* URL */
+
+              <div className="p-6 md:p-10">
+
+                <div className="rounded-3xl border border-zinc-800 bg-zinc-950/60 p-6 md:p-8">
+
+                  <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-violet-500/20 bg-violet-500/10 text-2xl">
+                    🔗
+                  </div>
+
+                  <div className="mt-5 text-center">
+                    <h3 className="text-lg font-black text-white">
+                      Import from a video link
+                    </h3>
+
+                    <p className="mt-2 text-sm text-zinc-500">
+                      Paste your supported video URL below.
+                    </p>
+                  </div>
+
+                  <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+
+                    <input
+                      type="url"
+                      value={url}
+                      onChange={(event) =>
+                        setUrl(
+                          event.target.value
+                        )
+                      }
+                      onKeyDown={(event) => {
+                        if (
+                          event.key ===
+                          "Enter"
+                        ) {
+                          handleUrlSubmit();
+                        }
+                      }}
+                      placeholder="https://..."
+                      className="min-w-0 flex-1 rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3.5 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/10"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleUrlSubmit()
+                      }
+                      className="rounded-2xl bg-white px-6 py-3.5 text-sm font-black text-black transition hover:bg-zinc-200 active:scale-[0.98]"
+                    >
+                      Import Video
+                    </button>
+
+                  </div>
+
+                </div>
+
+              </div>
+
+            )}
+
+          </div>
         )}
 
       {/* ======================================================
@@ -1177,61 +1243,64 @@ export default function UploadBox() {
 
       {ready &&
         !loading && (
-          <div className="space-y-4">
-            {/* VIDEO INFO */}
 
-            <div className="flex flex-col gap-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex min-w-0 items-center gap-4">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-xl">
-                  ✓
+          <div className="space-y-5">
+
+            {/* VIDEO PREVIEW */}
+
+            {videoPreview && (
+              <div className="overflow-hidden rounded-3xl border border-zinc-800 bg-[#0c0c0f] shadow-2xl">
+
+                <div className="border-b border-zinc-800 px-5 py-4">
+                  <div className="flex items-center justify-between">
+
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-400">
+                        Video ready
+                      </p>
+
+                      <p className="mt-1 truncate text-sm font-bold text-white">
+                        {file?.name ||
+                          "Video loaded successfully"}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={
+                        resetProject
+                      }
+                      className="rounded-xl border border-zinc-800 px-4 py-2 text-xs font-bold text-zinc-400 transition hover:border-red-500/30 hover:bg-red-500/5 hover:text-red-400"
+                    >
+                      Change
+                    </button>
+
+                  </div>
                 </div>
 
-                <div className="min-w-0">
-                  <p className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                    Video ready
-                  </p>
-
-                  <p className="mt-1 truncate text-sm font-semibold text-white">
-                    {file?.name ||
-                      "Video loaded successfully"}
-                  </p>
+                <div className="bg-black">
+                  <video
+                    src={videoPreview}
+                    controls
+                    className="max-h-[520px] w-full object-contain"
+                  />
                 </div>
+
               </div>
-
-              <button
-                type="button"
-                onClick={
-                  resetProject
-                }
-                className="rounded-xl border border-zinc-800 px-4 py-2 text-sm font-bold text-zinc-400 transition hover:border-red-500/30 hover:bg-red-500/5 hover:text-red-400"
-              >
-                Change Video
-              </button>
-            </div>
+            )}
 
             {/* RANGE */}
 
             <ClipRange
-              duration={
-                duration
-              }
-              startTime={
-                startTime
-              }
-              endTime={
-                endTime
-              }
+              duration={duration}
+              startTime={startTime}
+              endTime={endTime}
               onChange={(
                 start,
                 end
               ) => {
-                setStartTime(
-                  start
-                );
-
-                setEndTime(
-                  end
-                );
+                setStartTime(start);
+                setEndTime(end);
               }}
             />
 
@@ -1246,38 +1315,94 @@ export default function UploadBox() {
                 endTime <=
                 startTime
               }
-              className="group relative w-full overflow-hidden rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 py-4 text-base font-black text-white shadow-xl shadow-violet-950/30 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-2xl hover:shadow-violet-950/40 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
+              className="group relative w-full overflow-hidden rounded-2xl bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 py-4 text-base font-black text-white shadow-xl shadow-violet-950/30 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-2xl hover:shadow-violet-950/40 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
             >
+
+              <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+
               <span className="relative z-10 flex items-center justify-center gap-2">
                 <span>✨</span>
                 Generate Shorts
               </span>
+
             </button>
+
           </div>
         )}
 
       {/* ======================================================
-          LOADING
+          PROCESSING
       ====================================================== */}
 
       {loading && (
-        <div className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-8">
-          <div className="flex flex-col items-center justify-center">
-            <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-violet-600/10 text-3xl">
+
+        <div className="overflow-hidden rounded-3xl border border-zinc-800 bg-[#0c0c0f] shadow-2xl">
+
+          <div className="p-6 md:p-10">
+
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-violet-500/20 bg-violet-500/10 text-3xl">
               ⚡
             </div>
 
-            <Loading
-              status={status}
-              progress={
-                progress
-              }
-            />
+            <div className="mt-5 text-center">
 
-            <p className="mt-5 text-center text-xs text-zinc-600">
+              <h3 className="text-xl font-black text-white">
+                AI is working
+              </h3>
+
+              <p className="mt-2 text-sm text-zinc-500">
+                ClipForge AI is processing your video.
+              </p>
+
+            </div>
+
+            <div className="mt-8">
+              <Loading
+                status={status}
+                progress={progress}
+              />
+            </div>
+
+            <div className="mt-6 grid grid-cols-3 gap-2 text-center">
+
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-600">
+                  Progress
+                </p>
+
+                <p className="mt-1 text-sm font-black text-white">
+                  {Math.round(progress)}%
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-600">
+                  AI
+                </p>
+
+                <p className="mt-1 text-sm font-black text-violet-400">
+                  Active
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-600">
+                  Status
+                </p>
+
+                <p className="mt-1 truncate text-sm font-black text-emerald-400">
+                  Processing
+                </p>
+              </div>
+
+            </div>
+
+            <p className="mt-6 text-center text-xs text-zinc-700">
               Please keep this page open while ClipForge AI works.
             </p>
+
           </div>
+
         </div>
       )}
 
@@ -1287,15 +1412,17 @@ export default function UploadBox() {
 
       {!loading &&
         videos.length > 0 && (
+
           <div className="space-y-6">
-            {/* RESULT HEADER */}
 
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex flex-col gap-4 rounded-3xl border border-emerald-500/20 bg-emerald-500/[0.04] p-6 sm:flex-row sm:items-center sm:justify-between">
+
               <div>
-                <div className="mb-2 flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-emerald-400" />
 
-                  <span className="text-xs font-bold uppercase tracking-widest text-emerald-400">
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-lg shadow-emerald-400/50" />
+
+                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-400">
                     Completed
                   </span>
                 </div>
@@ -1305,33 +1432,35 @@ export default function UploadBox() {
                 </h3>
 
                 <p className="mt-1 text-sm text-zinc-500">
-                  Your AI-generated
-                  shorts are ready.
+                  Your AI-generated shorts are ready.
+                </p>
+
+              </div>
+
+              <div className="rounded-2xl border border-violet-500/20 bg-violet-500/10 px-5 py-3 text-center">
+                <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500">
+                  Created
+                </p>
+
+                <p className="mt-1 text-lg font-black text-violet-400">
+                  {videos.length}
                 </p>
               </div>
 
-              <div className="rounded-xl border border-violet-500/20 bg-violet-600/10 px-4 py-2 text-sm font-black text-violet-400">
-                {videos.length}{" "}
-                VIDEOS
-              </div>
             </div>
 
-            {/* VIDEOS */}
-
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+
               {videos.map(
                 (video) => (
                   <VideoCard
                     key={video}
-                    filename={
-                      video
-                    }
+                    filename={video}
                   />
                 )
               )}
-            </div>
 
-            {/* NEW PROJECT */}
+            </div>
 
             <button
               type="button"
@@ -1342,8 +1471,10 @@ export default function UploadBox() {
             >
               + Create Another Project
             </button>
+
           </div>
         )}
+
     </div>
   );
 }

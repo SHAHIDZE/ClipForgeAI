@@ -1,0 +1,1808 @@
+/* =========================================================
+   CLIPFORGE EDITOR
+   CLEAN FINAL LAYOUT
+   ========================================================= */
+
+.cf-editor {
+  width: 100%;
+  height: 100dvh;
+  min-width: 0;
+  min-height: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  overflow: hidden;
+
+  background: #090b10;
+  color: #f4f4f5;
+}
+
+/* =========================================================
+   TOP BAR
+   ========================================================= */
+
+.cf-topbar {
+  height: 58px;
+  min-height: 58px;
+
+  display: flex;
+  align-items: center;
+
+  gap: 14px;
+  padding: 0 16px;
+
+  background: #0e1015;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+
+  flex-shrink: 0;
+}
+
+/* =========================================================
+   BRAND
+   ========================================================= */
+
+.cf-brand {
+  min-width: 0;
+
+  display: flex;
+  align-items: center;
+
+  gap: 9px;
+
+  flex-shrink: 0;
+}
+
+.cf-brand-mark {
+  width: 32px;
+  height: 32px;
+
+  display: grid;
+  place-items: center;
+
+  flex-shrink: 0;
+
+  border-radius: 9px;
+
+  background: linear-gradient(
+    135deg,
+    #7c3aed,
+    #4f46e5
+  );
+
+  color: white;
+
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.cf-brand-title {
+  color: #f4f4f5;
+
+  font-size: 14px;
+  font-weight: 800;
+
+  line-height: 1;
+}
+
+.cf-brand-subtitle {
+  margin-top: 3px;
+
+  color: #71717a;
+
+  font-size: 9px;
+  line-height: 1;
+}
+
+/* =========================================================
+   PROJECT TITLE
+   ========================================================= */
+
+.cf-project-title {
+  min-width: 80px;
+  flex: 1;
+
+  overflow: hidden;
+
+  color: #a1a1aa;
+
+  font-size: 12px;
+}
+
+.cf-project-title span {
+  display: block;
+
+  overflow: hidden;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* =========================================================
+   TOP ACTIONS
+   ========================================================= */
+
+.cf-top-actions {
+  display: flex;
+  align-items: center;
+
+  gap: 7px;
+
+  flex-shrink: 0;
+}
+
+/* =========================================================
+   HISTORY
+   ========================================================= */
+
+.cf-history-buttons {
+  display: flex;
+  align-items: center;
+
+  gap: 3px;
+
+  margin-right: 2px;
+}
+
+.cf-history-buttons button {
+  width: 32px;
+  height: 32px;
+
+  display: grid;
+  place-items: center;
+
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 7px;
+
+  background: #181b22;
+  color: #a1a1aa;
+
+  font-size: 17px;
+
+  cursor: pointer;
+
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.cf-history-buttons button:hover:not(:disabled) {
+  background: #222630;
+  color: white;
+}
+
+.cf-history-buttons button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* =========================================================
+   RATIO
+   ========================================================= */
+
+.cf-ratio-group {
+  display: flex;
+  align-items: center;
+
+  gap: 3px;
+
+  padding: 3px;
+
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+
+  background: #11141a;
+}
+
+.cf-ratio-group button {
+  height: 27px;
+
+  padding: 0 9px;
+
+  border: 0;
+  border-radius: 5px;
+
+  background: transparent;
+  color: #71717a;
+
+  font-size: 10px;
+
+  cursor: pointer;
+
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.cf-ratio-group button:hover {
+  background: #1b1f28;
+  color: #d4d4d8;
+}
+
+.cf-ratio-group button.active {
+  background: #6d28d9;
+  color: white;
+}
+
+/* =========================================================
+   SAVE
+   ========================================================= */
+
+.cf-save-button {
+  height: 32px;
+
+  padding: 0 13px;
+
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 7px;
+
+  background: #181b22;
+  color: #d4d4d8;
+
+  font-size: 11px;
+
+  cursor: pointer;
+
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.cf-save-button:hover {
+  background: #222630;
+  color: white;
+}
+
+/* =========================================================
+   EXPORT
+   ========================================================= */
+
+.cf-export-button {
+  height: 32px;
+
+  padding: 0 15px;
+
+  border: 1px solid #7c3aed;
+  border-radius: 7px;
+
+  background: #6d28d9;
+  color: white;
+
+  font-size: 11px;
+  font-weight: 700;
+
+  cursor: pointer;
+
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.cf-export-button:hover {
+  background: #7c3aed;
+  border-color: #8b5cf6;
+}
+
+/* =========================================================
+   MAIN EDITOR
+   ========================================================= */
+
+.cf-editor-main {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+
+  flex: 1;
+
+  display: grid;
+
+  grid-template-columns:
+    76px
+    minmax(0, 1fr)
+    300px;
+
+  grid-template-rows: minmax(0, 1fr);
+
+  overflow: hidden;
+}
+
+/* =========================================================
+   LEFT TOOLS
+   ========================================================= */
+
+.cf-tools-panel {
+  grid-column: 1;
+  grid-row: 1;
+
+  width: 76px;
+  min-width: 76px;
+  min-height: 0;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  padding: 8px 6px;
+
+  box-sizing: border-box;
+
+  background: #0b0d12;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+
+  scrollbar-width: none;
+}
+
+.cf-tools-panel::-webkit-scrollbar {
+  display: none;
+}
+
+.cf-tools-header {
+  width: 100%;
+
+  padding: 7px 0 10px;
+
+  text-align: center;
+
+  color: rgba(255, 255, 255, 0.25);
+
+  font-size: 9px;
+  font-weight: 700;
+
+  letter-spacing: 0.14em;
+
+  flex-shrink: 0;
+}
+
+.cf-tool-button {
+  width: 62px;
+  min-height: 62px;
+
+  display: flex;
+  flex-direction: column;
+
+  align-items: center;
+  justify-content: center;
+
+  gap: 5px;
+
+  margin: 2px 0;
+
+  box-sizing: border-box;
+
+  border: 1px solid transparent;
+  border-radius: 11px;
+
+  background: transparent;
+  color: rgba(255, 255, 255, 0.4);
+
+  cursor: pointer;
+
+  flex-shrink: 0;
+
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.cf-tool-button:hover {
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.cf-tool-button-active {
+  background: rgba(99, 102, 241, 0.13);
+
+  border-color: rgba(99, 102, 241, 0.25);
+
+  color: #ffffff;
+}
+
+.cf-tool-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  height: 20px;
+
+  font-size: 18px;
+  line-height: 1;
+}
+
+.cf-tool-label {
+  font-size: 9px;
+  line-height: 1;
+}
+
+/* =========================================================
+   CENTER WORKSPACE
+   ========================================================= */
+
+.cf-workspace {
+  grid-column: 2;
+  grid-row: 1;
+
+  min-width: 0;
+  min-height: 0;
+
+  height: 100%;
+
+  display: grid;
+
+  grid-template-rows:
+    minmax(0, 1fr)
+    300px;
+
+  overflow: hidden;
+
+  background: #090b10;
+}
+
+/* =========================================================
+   PREVIEW AREA
+   ========================================================= */
+
+.cf-preview-area {
+  min-width: 0;
+  min-height: 0;
+
+  position: relative;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  overflow: hidden;
+
+  background:
+    radial-gradient(
+      circle at center,
+      rgba(99, 102, 241, 0.055),
+      transparent 58%
+    );
+}
+
+.cf-preview-area > * {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* =========================================================
+   GENERIC PREVIEW
+   ========================================================= */
+
+.cf-preview {
+  min-width: 0;
+  min-height: 0;
+
+  width: 100%;
+  height: 100%;
+
+  display: flex;
+  flex-direction: column;
+
+  overflow: hidden;
+}
+
+.cf-video-preview {
+  min-width: 0;
+  min-height: 0;
+
+  width: 100%;
+  height: 100%;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  overflow: hidden;
+}
+
+/* =========================================================
+   PREVIEW HEADER
+   ========================================================= */
+
+.cf-preview-header {
+  height: 38px;
+  min-height: 38px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 0 14px;
+
+  box-sizing: border-box;
+
+  background: #0c0e12;
+
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+
+  flex-shrink: 0;
+}
+
+.cf-preview-header-left {
+  min-width: 0;
+
+  display: flex;
+  align-items: center;
+
+  gap: 8px;
+}
+
+.cf-preview-title {
+  max-width: 300px;
+
+  overflow: hidden;
+
+  white-space: nowrap;
+  text-overflow: ellipsis;
+
+  color: #a1a1aa;
+
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.cf-preview-ratio {
+  padding: 3px 6px;
+
+  border-radius: 4px;
+
+  background: rgba(255, 255, 255, 0.05);
+
+  color: #71717a;
+
+  font-size: 9px;
+}
+
+.cf-preview-status {
+  display: flex;
+  align-items: center;
+
+  gap: 5px;
+
+  color: #71717a;
+
+  font-size: 8px;
+  font-weight: 700;
+
+  letter-spacing: 0.08em;
+}
+
+.cf-status-dot {
+  width: 6px;
+  height: 6px;
+
+  border-radius: 50%;
+
+  background: #22c55e;
+
+  box-shadow:
+    0 0 8px rgba(34, 197, 94, 0.45);
+}
+
+/* =========================================================
+   VIDEO STAGE
+   ========================================================= */
+
+.cf-preview-stage {
+  position: relative;
+
+  min-width: 0;
+  min-height: 0;
+
+  flex: 1;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  overflow: hidden;
+
+  padding: 22px;
+
+  box-sizing: border-box;
+}
+
+.cf-preview-frame {
+  position: relative;
+
+  width: min(760px, 82%);
+  max-width: 100%;
+  max-height: 100%;
+
+  overflow: hidden;
+
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 12px;
+
+  background: #000;
+
+  box-shadow:
+    0 25px 60px rgba(0, 0, 0, 0.45),
+    0 8px 25px rgba(0, 0, 0, 0.25);
+}
+
+.cf-frame-vertical {
+  width: min(360px, 42%);
+}
+
+.cf-frame-square {
+  width: min(480px, 55%);
+}
+
+.cf-frame-horizontal {
+  width: min(760px, 82%);
+}
+
+.cf-preview-video {
+  display: block;
+
+  width: 100%;
+  height: 100%;
+
+  object-fit: contain;
+
+  background: #000;
+}
+
+.cf-preview-overlay {
+  pointer-events: none;
+
+  position: absolute;
+
+  inset: 0;
+
+  border: 1px solid rgba(255, 255, 255, 0.025);
+}
+
+/* =========================================================
+   EMPTY PREVIEW
+   ========================================================= */
+
+.cf-preview-empty {
+  width: 100%;
+  height: 100%;
+
+  display: flex;
+  flex-direction: column;
+
+  align-items: center;
+  justify-content: center;
+
+  text-align: center;
+
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.cf-preview-empty-icon {
+  width: 56px;
+  height: 56px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  margin-bottom: 12px;
+
+  border-radius: 16px;
+
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.cf-preview-empty-title {
+  color: rgba(255, 255, 255, 0.45);
+
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cf-preview-empty-subtitle {
+  margin-top: 5px;
+
+  color: rgba(255, 255, 255, 0.2);
+
+  font-size: 11px;
+}
+
+/* =========================================================
+   PLAYER
+   ========================================================= */
+
+.cf-player {
+  flex-shrink: 0;
+
+  background: #101116;
+
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cf-player-main {
+  height: 46px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 8px;
+}
+
+.cf-player-main button {
+  width: 32px;
+  height: 32px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border: 0;
+  border-radius: 8px;
+
+  background: transparent;
+
+  color: rgba(255, 255, 255, 0.45);
+
+  cursor: pointer;
+}
+
+.cf-player-main button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: white;
+}
+
+.cf-player-main button:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.cf-player-main .cf-player-play {
+  width: 36px;
+  height: 36px;
+
+  border-radius: 50%;
+
+  background: white;
+  color: #000;
+}
+
+.cf-player-main .cf-player-play:hover:not(:disabled) {
+  background: #f4f4f5;
+  color: #000;
+}
+
+/* =========================================================
+   PLAYER BOTTOM
+   ========================================================= */
+
+.cf-player-bottom {
+  min-width: 0;
+
+  height: 42px;
+
+  display: flex;
+  align-items: center;
+
+  gap: 14px;
+
+  padding: 0 14px;
+
+  box-sizing: border-box;
+
+  border-top: 1px solid rgba(255, 255, 255, 0.045);
+}
+
+.cf-player-time {
+  flex-shrink: 0;
+
+  color: rgba(255, 255, 255, 0.48);
+
+  font-family: monospace;
+  font-size: 10px;
+}
+
+.cf-player-time span {
+  margin: 0 5px;
+
+  color: rgba(255, 255, 255, 0.18);
+}
+
+.cf-player-progress {
+  min-width: 80px;
+
+  flex: 1;
+}
+
+.cf-player-progress input {
+  display: block;
+
+  width: 100%;
+  height: 3px;
+
+  margin: 0;
+
+  appearance: none;
+
+  border-radius: 999px;
+
+  background: rgba(255, 255, 255, 0.1);
+
+  cursor: pointer;
+}
+
+.cf-player-progress input::-webkit-slider-thumb {
+  appearance: none;
+
+  width: 9px;
+  height: 9px;
+
+  border: 0;
+  border-radius: 50%;
+
+  background: #a78bfa;
+
+  cursor: pointer;
+}
+
+.cf-player-progress input::-moz-range-thumb {
+  width: 9px;
+  height: 9px;
+
+  border: 0;
+  border-radius: 50%;
+
+  background: #a78bfa;
+
+  cursor: pointer;
+}
+
+.cf-player-controls {
+  flex-shrink: 0;
+
+  display: flex;
+  align-items: center;
+
+  gap: 2px;
+}
+
+.cf-player-controls button {
+  padding: 4px 7px;
+
+  border: 0;
+  border-radius: 5px;
+
+  background: transparent;
+
+  color: rgba(255, 255, 255, 0.3);
+
+  font-size: 9px;
+
+  cursor: pointer;
+}
+
+.cf-player-controls button:hover:not(:disabled) {
+  color: white;
+
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.cf-player-controls button.active {
+  background: rgba(255, 255, 255, 0.1);
+
+  color: white;
+}
+
+.cf-player-controls button:disabled {
+  opacity: 0.25;
+
+  cursor: default;
+}
+
+.cf-player-controls .cf-icon-button {
+  margin-left: 3px;
+
+  padding: 6px;
+}
+
+/* =========================================================
+   TIMELINE
+   ========================================================= */
+
+.cf-timeline-area {
+  min-width: 0;
+  min-height: 0;
+
+  height: 300px;
+
+  overflow: hidden;
+
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+
+  background: #0b0d12;
+}
+
+.cf-workspace > .cf-timeline {
+  min-width: 0;
+  min-height: 0;
+
+  width: 100%;
+  height: 300px;
+  max-height: 300px;
+
+  overflow: hidden;
+
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+/* Timeline internal scroll */
+
+.cf-timeline {
+  min-width: 0;
+  min-height: 0;
+
+  overflow: hidden;
+}
+
+.cf-timeline-tracks,
+.cf-timeline-body,
+.cf-timeline-content {
+  min-width: 0;
+  min-height: 0;
+
+  overflow-y: auto;
+  overflow-x: auto;
+
+  scrollbar-width: thin;
+
+  scrollbar-color:
+    rgba(255, 255, 255, 0.16)
+    transparent;
+}
+
+.cf-timeline-tracks::-webkit-scrollbar,
+.cf-timeline-body::-webkit-scrollbar,
+.cf-timeline-content::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.cf-timeline-tracks::-webkit-scrollbar-track,
+.cf-timeline-body::-webkit-scrollbar-track,
+.cf-timeline-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cf-timeline-tracks::-webkit-scrollbar-thumb,
+.cf-timeline-body::-webkit-scrollbar-thumb,
+.cf-timeline-content::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.cf-timeline-tracks::-webkit-scrollbar-thumb:hover,
+.cf-timeline-body::-webkit-scrollbar-thumb:hover,
+.cf-timeline-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* =========================================================
+   RIGHT PROPERTIES
+   ========================================================= */
+
+.cf-properties-area {
+  grid-column: 3;
+  grid-row: 1;
+
+  width: 300px;
+  min-width: 300px;
+  min-height: 0;
+
+  height: 100%;
+
+  overflow: hidden;
+
+  background: #0b0d12;
+
+  border-left: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+/* =========================================================
+   PROPERTIES PANEL
+   ========================================================= */
+
+.cf-properties-panel {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  overflow: hidden;
+
+  background: #0b0d12;
+}
+
+.cf-properties-header {
+  height: 46px;
+  min-height: 46px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 0 14px;
+
+  box-sizing: border-box;
+
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+
+  font-size: 10px;
+  font-weight: 700;
+
+  letter-spacing: 0.16em;
+
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.cf-properties-header button {
+  width: 26px;
+  height: 26px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border: 0;
+  border-radius: 7px;
+
+  background: transparent;
+
+  color: rgba(255, 255, 255, 0.35);
+
+  cursor: pointer;
+}
+
+.cf-properties-header button:hover {
+  background: rgba(255, 255, 255, 0.06);
+
+  color: white;
+}
+
+.cf-properties-scroll {
+  flex: 1;
+
+  min-height: 0;
+
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  padding: 4px 0 20px;
+
+  scrollbar-width: thin;
+
+  scrollbar-color:
+    rgba(255, 255, 255, 0.12)
+    transparent;
+}
+
+.cf-properties-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+
+.cf-properties-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cf-properties-scroll::-webkit-scrollbar-thumb {
+  border-radius: 10px;
+
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* =========================================================
+   PROPERTY SECTIONS
+   ========================================================= */
+
+.cf-property-section {
+  padding: 14px;
+
+  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+}
+
+.cf-property-section-title {
+  margin-bottom: 12px;
+
+  color: rgba(255, 255, 255, 0.28);
+
+  font-size: 9px;
+  font-weight: 700;
+
+  letter-spacing: 0.14em;
+}
+
+/* =========================================================
+   PROPERTY ROWS
+   ========================================================= */
+
+.cf-property-row {
+  display: flex;
+  flex-direction: column;
+
+  gap: 6px;
+
+  margin-bottom: 11px;
+}
+
+.cf-property-row:last-child {
+  margin-bottom: 0;
+}
+
+.cf-property-row label,
+.cf-property-field label {
+  font-size: 10px;
+
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.cf-property-row input,
+.cf-property-row textarea,
+.cf-property-row select,
+.cf-property-field input,
+.cf-property-field select {
+  width: 100%;
+  min-width: 0;
+
+  box-sizing: border-box;
+
+  border: 1px solid rgba(255, 255, 255, 0.075);
+
+  border-radius: 7px;
+
+  outline: none;
+
+  background: rgba(255, 255, 255, 0.035);
+
+  color: rgba(255, 255, 255, 0.85);
+
+  font: inherit;
+  font-size: 11px;
+
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.cf-property-row input,
+.cf-property-row select,
+.cf-property-field input,
+.cf-property-field select {
+  height: 32px;
+
+  padding: 0 9px;
+}
+
+.cf-property-row textarea {
+  min-height: 72px;
+
+  padding: 8px 9px;
+
+  resize: vertical;
+
+  line-height: 1.5;
+}
+
+.cf-property-row input:focus,
+.cf-property-row textarea:focus,
+.cf-property-row select:focus,
+.cf-property-field input:focus,
+.cf-property-field select:focus {
+  border-color: rgba(99, 102, 241, 0.55);
+
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.cf-property-readonly {
+  height: 32px;
+
+  display: flex;
+  align-items: center;
+
+  padding: 0 9px;
+
+  box-sizing: border-box;
+
+  border: 1px solid rgba(255, 255, 255, 0.055);
+
+  border-radius: 7px;
+
+  background: rgba(255, 255, 255, 0.02);
+
+  color: rgba(255, 255, 255, 0.35);
+
+  font-size: 11px;
+}
+
+/* =========================================================
+   PROPERTY GRID
+   ========================================================= */
+
+.cf-property-grid {
+  display: grid;
+
+  grid-template-columns: 1fr 1fr;
+
+  gap: 8px;
+
+  margin-bottom: 11px;
+}
+
+.cf-property-field {
+  min-width: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  gap: 6px;
+}
+
+/* =========================================================
+   RANGE
+   ========================================================= */
+
+.cf-range {
+  width: 100%;
+  height: 4px;
+
+  appearance: none;
+
+  accent-color: #6366f1;
+
+  cursor: pointer;
+}
+
+.cf-property-range {
+  width: 100%;
+  height: 4px;
+
+  margin: 2px 0 4px;
+
+  appearance: none;
+
+  border-radius: 999px;
+
+  background: rgba(255, 255, 255, 0.1);
+
+  cursor: pointer;
+}
+
+.cf-property-range::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+
+  appearance: none;
+
+  border: 2px solid #0b0d12;
+
+  border-radius: 50%;
+
+  background: #818cf8;
+
+  box-shadow:
+    0 0 0 1px rgba(129, 140, 248, 0.5);
+
+  cursor: pointer;
+}
+
+.cf-property-range::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+
+  border: 2px solid #0b0d12;
+
+  border-radius: 50%;
+
+  background: #818cf8;
+
+  cursor: pointer;
+}
+
+/* =========================================================
+   LABEL LINE
+   ========================================================= */
+
+.cf-property-label-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cf-property-label-line span {
+  font-size: 10px;
+
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.cf-property-value {
+  margin-bottom: 6px;
+
+  font-size: 10px;
+
+  font-variant-numeric: tabular-nums;
+
+  color: rgba(255, 255, 255, 0.48);
+}
+
+/* =========================================================
+   SEGMENTED
+   ========================================================= */
+
+.cf-segmented {
+  display: grid;
+
+  grid-template-columns: repeat(3, 1fr);
+
+  gap: 4px;
+}
+
+.cf-segmented button {
+  height: 30px;
+
+  border: 1px solid rgba(255, 255, 255, 0.06);
+
+  border-radius: 6px;
+
+  background: rgba(255, 255, 255, 0.025);
+
+  color: rgba(255, 255, 255, 0.35);
+
+  font-size: 11px;
+  font-weight: 600;
+
+  cursor: pointer;
+}
+
+.cf-segmented button:hover {
+  background: rgba(255, 255, 255, 0.06);
+
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.cf-segmented button.active {
+  border-color: rgba(99, 102, 241, 0.4);
+
+  background: rgba(99, 102, 241, 0.15);
+
+  color: white;
+}
+
+/* =========================================================
+   SELECT
+   ========================================================= */
+
+.cf-property-select {
+  width: 100%;
+  height: 36px;
+
+  padding: 0 11px;
+
+  box-sizing: border-box;
+
+  border: 1px solid rgba(255, 255, 255, 0.09);
+
+  border-radius: 7px;
+
+  outline: none;
+
+  background: #18191d;
+
+  color: #f5f5f5;
+
+  font-size: 12px;
+  font-weight: 500;
+
+  cursor: pointer;
+
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.cf-property-select:hover {
+  background: #1d1f24;
+
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.cf-property-select:focus {
+  background: #1d1f24;
+
+  border-color: rgba(99, 102, 241, 0.75);
+}
+
+.cf-property-select option {
+  background: #18191d;
+
+  color: #f5f5f5;
+}
+
+/* =========================================================
+   TRACK STATUS
+   ========================================================= */
+
+.cf-track-status {
+  display: flex;
+
+  gap: 6px;
+
+  margin-top: 10px;
+}
+
+.cf-track-status span {
+  padding: 4px 7px;
+
+  border-radius: 5px;
+
+  font-size: 8px;
+  font-weight: 700;
+
+  letter-spacing: 0.08em;
+}
+
+.status-on {
+  background: rgba(34, 197, 94, 0.1);
+
+  color: rgba(74, 222, 128, 0.8);
+}
+
+.status-off {
+  background: rgba(239, 68, 68, 0.1);
+
+  color: rgba(248, 113, 113, 0.75);
+}
+
+/* =========================================================
+   EMPTY PROPERTIES
+   ========================================================= */
+
+.cf-properties-empty {
+  flex: 1;
+
+  display: flex;
+  flex-direction: column;
+
+  align-items: center;
+  justify-content: center;
+
+  padding: 30px;
+
+  text-align: center;
+}
+
+.cf-properties-empty-icon {
+  width: 48px;
+  height: 48px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  margin-bottom: 14px;
+
+  border: 1px solid rgba(255, 255, 255, 0.08);
+
+  border-radius: 14px;
+
+  background: rgba(255, 255, 255, 0.025);
+
+  color: rgba(255, 255, 255, 0.25);
+
+  font-size: 20px;
+}
+
+.cf-properties-empty-title {
+  color: rgba(255, 255, 255, 0.7);
+
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cf-properties-empty-text {
+  max-width: 210px;
+
+  margin-top: 7px;
+
+  color: rgba(255, 255, 255, 0.28);
+
+  font-size: 11px;
+
+  line-height: 1.6;
+}
+
+/* =========================================================
+   FOOTER
+   ========================================================= */
+
+.cf-properties-footer {
+  padding: 10px 14px;
+
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+
+  flex-shrink: 0;
+}
+
+.cf-properties-reset {
+  width: 100%;
+  height: 32px;
+
+  border: 1px solid rgba(255, 255, 255, 0.08);
+
+  border-radius: 8px;
+
+  background: rgba(255, 255, 255, 0.025);
+
+  color: rgba(255, 255, 255, 0.45);
+
+  font-size: 10px;
+  font-weight: 600;
+
+  cursor: pointer;
+}
+
+.cf-properties-reset:hover {
+  background: rgba(255, 255, 255, 0.055);
+
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* =========================================================
+   GLOBAL BOX SIZING
+   ========================================================= */
+
+.cf-editor,
+.cf-editor *,
+.cf-editor *::before,
+.cf-editor *::after {
+  box-sizing: border-box;
+}
+
+/* =========================================================
+   RESPONSIVE
+   ========================================================= */
+
+@media (max-width: 1100px) {
+  .cf-editor-main {
+    grid-template-columns:
+      68px
+      minmax(0, 1fr)
+      250px;
+  }
+
+  .cf-tools-panel {
+    width: 68px;
+    min-width: 68px;
+  }
+
+  .cf-properties-area {
+    width: 250px;
+    min-width: 250px;
+  }
+
+  .cf-workspace {
+    grid-template-rows:
+      minmax(0, 1fr)
+      270px;
+  }
+
+  .cf-workspace > .cf-timeline {
+    height: 270px;
+    max-height: 270px;
+  }
+}
+
+@media (max-width: 850px) {
+  .cf-editor-main {
+    grid-template-columns:
+      64px
+      minmax(0, 1fr);
+  }
+
+  .cf-tools-panel {
+    width: 64px;
+    min-width: 64px;
+  }
+
+  .cf-properties-area {
+    display: none;
+  }
+
+  .cf-workspace {
+    grid-template-rows:
+      minmax(0, 1fr)
+      240px;
+  }
+
+  .cf-workspace > .cf-timeline {
+    height: 240px;
+    max-height: 240px;
+  }
+
+  .cf-tool-button {
+    width: 54px;
+    min-height: 58px;
+  }
+}
+
+@media (max-width: 700px) {
+  .cf-topbar {
+    height: 52px;
+    min-height: 52px;
+
+    gap: 8px;
+
+    padding: 0 10px;
+  }
+
+  .cf-brand-subtitle {
+    display: none;
+  }
+
+  .cf-ratio-group {
+    display: none;
+  }
+
+  .cf-preview-stage {
+    padding: 12px;
+  }
+
+  .cf-preview-frame {
+    width: min(600px, 94%);
+  }
+
+  .cf-frame-vertical {
+    width: min(300px, 58%);
+  }
+
+  .cf-frame-square {
+    width: min(400px, 70%);
+  }
+
+  .cf-frame-horizontal {
+    width: 96%;
+  }
+
+  .cf-workspace {
+    grid-template-rows:
+      minmax(0, 1fr)
+      220px;
+  }
+
+  .cf-workspace > .cf-timeline {
+    height: 220px;
+    max-height: 220px;
+  }
+}
+
+@media (max-width: 560px) {
+  .cf-topbar {
+    height: 50px;
+    min-height: 50px;
+
+    gap: 6px;
+
+    padding: 0 8px;
+  }
+
+  .cf-brand-title {
+    font-size: 12px;
+  }
+
+  .cf-brand-mark {
+    width: 28px;
+    height: 28px;
+  }
+
+  .cf-history-buttons {
+    display: none;
+  }
+
+  .cf-project-title {
+    font-size: 9px;
+  }
+
+  .cf-save-button {
+    padding: 0 8px;
+
+    font-size: 10px;
+  }
+
+  .cf-export-button {
+    padding: 0 9px;
+
+    font-size: 10px;
+  }
+
+  .cf-editor-main {
+    grid-template-columns:
+      54px
+      minmax(0, 1fr);
+  }
+
+  .cf-tools-panel {
+    width: 54px;
+    min-width: 54px;
+
+    padding: 6px 4px;
+  }
+
+  .cf-tool-button {
+    width: 46px;
+    min-height: 50px;
+  }
+
+  .cf-tool-icon {
+    font-size: 15px;
+  }
+
+  .cf-tool-label {
+    font-size: 7px;
+  }
+
+  .cf-preview-header {
+    padding: 0 9px;
+  }
+
+  .cf-preview-title {
+    max-width: 180px;
+  }
+
+  .cf-preview-stage {
+    padding: 8px;
+  }
+
+  .cf-frame-vertical {
+    width: min(260px, 68%);
+  }
+
+  .cf-frame-square {
+    width: min(350px, 78%);
+  }
+
+  .cf-frame-horizontal {
+    width: 96%;
+  }
+
+  .cf-player-bottom {
+    gap: 7px;
+
+    padding: 0 8px;
+  }
+
+  .cf-player-time {
+    font-size: 9px;
+  }
+
+  .cf-player-controls button {
+    padding: 3px 5px;
+  }
+
+  .cf-player-controls .cf-icon-button {
+    display: none;
+  }
+
+  .cf-workspace {
+    grid-template-rows:
+      minmax(0, 1fr)
+      210px;
+  }
+
+  .cf-workspace > .cf-timeline {
+    height: 210px;
+    max-height: 210px;
+  }
+}

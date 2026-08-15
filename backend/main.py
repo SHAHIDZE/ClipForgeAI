@@ -1,4 +1,4 @@
-from fastapi import (
+﻿from fastapi import (
     FastAPI,
     UploadFile,
     File,
@@ -7,7 +7,7 @@ from fastapi import (
     BackgroundTasks,
     Query,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import (
@@ -15,16 +15,36 @@ from fastapi.security import (
     OAuth2PasswordRequestForm,
 )
 
+from backend.services.credit_service import (
+    calculate_generation_credits,
+    get_user_credits,
+    spend_generation_credits,
+    refund_generation_credits,
+)
+
 from jose import jwt, JWTError
 from datetime import datetime, timedelta
 
+
+import math
+import threading
+import time
 import os
+import json
 import shutil
 import ffmpeg
 import whisper
 import threading
+import secrets
+import httpx
+import re
+import traceback
+from urllib.parse import urlencode
+from backend.database.database import init_db
 
+from dotenv import load_dotenv
 from pydantic import BaseModel
+from sqlalchemy import func
 
 from backend.services.whisper_service import transcribe_video
 from backend.services.highlight_service import get_best_segments
@@ -33,13 +53,20 @@ from backend.services.youtube_service import download_youtube
 from backend.services.subtitle_service import create_subtitles
 from backend.services.ai_service import process_video
 
+
 from backend.models.schemas import (
     UserRegister,
     UserLogin,
 )
 
+from backend.database.database import SessionLocal, get_db
+
 from backend.models.user import User
-from backend.database.database import SessionLocal
+from backend.models.project import Project
+from backend.models.production import ProductionJob
+from backend.models.generated_video import GeneratedVideo
+from backend.models.plan import Plan
+from backend.models.short import Short
 
 from backend.auth.security import (
     hash_password,
@@ -47,6 +74,212 @@ from backend.auth.security import (
 )
 
 from backend.celery_app import celery_app
+from backend.tasks import process_video_task
+
+
+# ============================================================
+# PATHS
+# ============================================================
+
+BASE_DIR = os.path.dirname(
+    os.path.abspath(__file__)
+)
+
+PROJECT_DIR = os.path.dirname(BASE_DIR)
+
+
+# ============================================================
+# ENVIRONMENT
+# ============================================================
+
+def clean_env_value(value):
+    """
+    .env ichidagi qiymatni tozalaydi.
+
+    Masalan:
+    [http://127.0.0.1:8000/auth/google/callback](...)
+    kabi markdown qiymatlarni oddiy URLga aylantiradi.
+    """
+
+    if value is None:
+        return None
+
+    value = str(value).strip()
+
+    # "mailto:" markdown holatini tozalash
+    if value.startswith("[") and "](" in value:
+        match = re.match(
+            r"^\[.*?\]\((.*?)\)$",
+            value,
+        )
+
+        if match:
+            value = match.group(1).strip()
+
+    # Oddiy markdown link
+    if value.startswith("[") and "](" in value:
+        value = value[1:value.find("]")]
+
+    # Qo'shtirnoqlar
+    if (
+        len(value) >= 2
+        and value[0] == value[-1]
+        and value[0] in ('"', "'")
+    ):
+        value = value[1:-1].strip()
+
+    return value
+
+
+def load_environment():
+    """
+    ClipForgeAI loyihasi uchun .env faylini
+    bir nechta mumkin bo'lgan joylardan qidiradi.
+    """
+
+    possible_env_files = [
+        os.path.join(PROJECT_DIR, ".env"),
+        os.path.join(PROJECT_DIR, "ClipForgeAI.env"),
+        os.path.join(PROJECT_DIR, ".env.local"),
+        os.path.join(BASE_DIR, ".env"),
+        os.path.join(BASE_DIR, "backend.env"),
+    ]
+
+    loaded_files = []
+
+    for env_file in possible_env_files:
+
+        if os.path.isfile(env_file):
+
+            loaded = load_dotenv(
+                env_file,
+                override=True,
+            )
+
+            if loaded:
+                loaded_files.append(env_file)
+
+    return possible_env_files, loaded_files
+
+
+ENV_FILES_CHECKED, ENV_FILES_LOADED = (
+    load_environment()
+)
+
+
+# ============================================================
+# ENV VALUES
+# ============================================================
+
+GOOGLE_CLIENT_ID = clean_env_value(
+    os.getenv("GOOGLE_CLIENT_ID")
+)
+
+GOOGLE_CLIENT_SECRET = clean_env_value(
+    os.getenv("GOOGLE_CLIENT_SECRET")
+)
+
+GOOGLE_REDIRECT_URI = clean_env_value(
+    os.getenv("GOOGLE_REDIRECT_URI")
+)
+
+GOOGLE_ADMIN_EMAIL = clean_env_value(
+    os.getenv("GOOGLE_ADMIN_EMAIL")
+)
+
+SECRET_KEY = clean_env_value(
+    os.getenv(
+        "SECRET_KEY",
+        "clipforge_super_secret_key_change_me",
+    )
+)
+
+ALGORITHM = "HS256"
+
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
+
+
+# ============================================================
+# ENV DEBUG
+# ============================================================
+
+print()
+print("=" * 70)
+print("CLIPFORGE AI ENVIRONMENT")
+print("=" * 70)
+
+print()
+print("PROJECT DIR:")
+print(PROJECT_DIR)
+
+print()
+print("ENV FILES CHECKED:")
+
+for env_file in ENV_FILES_CHECKED:
+
+    if os.path.isfile(env_file):
+        print("OK ", env_file)
+    else:
+        print("NO ", env_file)
+
+print()
+print("ENV FILES LOADED:")
+
+if ENV_FILES_LOADED:
+
+    for env_file in ENV_FILES_LOADED:
+        print("OK ", env_file)
+
+else:
+
+    print("NO ENV FILE LOADED")
+
+print()
+
+print(
+    "GOOGLE CLIENT ID:",
+    (
+        GOOGLE_CLIENT_ID
+        if GOOGLE_CLIENT_ID
+        else "NOT SET"
+    ),
+)
+
+print(
+    "GOOGLE CLIENT SECRET:",
+    "SET"
+    if GOOGLE_CLIENT_SECRET
+    else "NOT SET",
+)
+
+print(
+    "GOOGLE REDIRECT URI:",
+    (
+        GOOGLE_REDIRECT_URI
+        if GOOGLE_REDIRECT_URI
+        else "NOT SET"
+    ),
+)
+
+print(
+    "GOOGLE ADMIN EMAIL:",
+    (
+        GOOGLE_ADMIN_EMAIL
+        if GOOGLE_ADMIN_EMAIL
+        else "NOT SET"
+    ),
+)
+
+print(
+    "SECRET KEY:",
+    "SET"
+    if SECRET_KEY
+    else "NOT SET",
+)
+
+print()
+print("=" * 70)
+print()
 
 
 # ============================================================
@@ -58,6 +291,26 @@ app = FastAPI(
     description="AI powered Shorts generator",
     version="1.0",
 )
+
+
+@app.on_event("startup")
+def startup_clipforge_queue():
+    # Celery worker is the authoritative AI queue.
+    # Do not start the old in-process thread queue here.
+    print("ClipForge: Celery queue mode enabled.")
+
+init_db()
+
+
+
+# ============================================================
+# DATABASE TABLES
+# ============================================================
+
+from backend.database.database import engine, Base
+
+Base.metadata.create_all(bind=engine)
+
 
 
 # ============================================================
@@ -88,14 +341,8 @@ print("Whisper model loaded.")
 
 
 # ============================================================
-# AUTH SETTINGS
+# AUTH
 # ============================================================
-
-SECRET_KEY = "clipforge_super_secret_key"
-
-ALGORITHM = "HS256"
-
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
 
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl="login"
@@ -106,14 +353,8 @@ oauth2_scheme = OAuth2PasswordBearer(
 # DIRECTORIES
 # ============================================================
 
-BASE_DIR = os.path.dirname(
-    os.path.abspath(__file__)
-)
-
-PROJECT_DIR = os.path.dirname(BASE_DIR)
-
 UPLOAD_FOLDER = os.path.join(
-    BASE_DIR,
+    PROJECT_DIR,
     "uploads",
 )
 
@@ -143,6 +384,15 @@ PROCESSING_LOCK = threading.Lock()
 
 
 # ============================================================
+# GOOGLE OAUTH STATE
+# ============================================================
+
+GOOGLE_OAUTH_STATES = {}
+
+GOOGLE_OAUTH_LOCK = threading.Lock()
+
+
+# ============================================================
 # REQUEST MODELS
 # ============================================================
 
@@ -155,17 +405,48 @@ class YouTubeRequest(BaseModel):
     url: str
 
 
+class AdminUserUpdate(BaseModel):
+    username: str | None = None
+    email: str | None = None
+    plan: str | None = None
+    role: str | None = None
+    is_active: bool | None = None
+
+
+class AdminPlanCreate(BaseModel):
+    name: str
+    display_name: str
+    price: float = 0.0
+    monthly_video_limit: int = 10
+    max_video_duration: int = 3600
+    max_shorts_per_video: int = 10
+    storage_limit_gb: float = 1.0
+    features: list[str] = []
+    is_active: bool = True
+
+
+class AdminPlanUpdate(BaseModel):
+    name: str | None = None
+    display_name: str | None = None
+    price: float | None = None
+    monthly_video_limit: int | None = None
+    max_video_duration: int | None = None
+    max_shorts_per_video: int | None = None
+    storage_limit_gb: float | None = None
+    features: list[str] | None = None
+    is_active: bool | None = None
+
+
 # ============================================================
 # HELPERS
 # ============================================================
 
 def get_short_files():
-    """
-    exports papkasidagi final short videolarni qaytaradi.
-    """
 
     try:
-        files = os.listdir(EXPORT_FOLDER)
+        files = os.listdir(
+            EXPORT_FOLDER
+        )
     except Exception:
         return []
 
@@ -190,12 +471,11 @@ def get_short_files():
 
 
 def cleanup_old_shorts():
-    """
-    Eski short video va subtitle fayllarini o'chiradi.
-    """
 
     try:
-        files = os.listdir(EXPORT_FOLDER)
+        files = os.listdir(
+            EXPORT_FOLDER
+        )
     except Exception:
         return
 
@@ -230,9 +510,6 @@ def update_status(
     filename,
     **values,
 ):
-    """
-    Processing statusni thread-safe yangilaydi.
-    """
 
     with PROCESSING_LOCK:
 
@@ -250,9 +527,6 @@ def update_status(
 def get_video_duration(
     video_path: str,
 ):
-    """
-    Video davomiyligini ffprobe orqali oladi.
-    """
 
     try:
 
@@ -278,199 +552,6 @@ def get_video_duration(
             f"Video duration olishda xato: {e}"
         )
 
-
-# ============================================================
-# LOCAL BACKGROUND PROCESSING
-# ============================================================
-
-def process_video_background(
-    filename: str,
-    video_path: str,
-    start_time: float,
-    end_time: float,
-):
-    """
-    Celery ishlamagan holatda local fallback processing.
-    """
-
-    try:
-
-        print()
-        print("=" * 60)
-        print("LOCAL BACKGROUND PROCESSING STARTED")
-        print(f"Filename: {filename}")
-        print(
-            f"Range: {start_time:.2f}s -> "
-            f"{end_time:.2f}s"
-        )
-        print("=" * 60)
-        print()
-
-        update_status(
-            filename,
-            status="processing",
-            step="analyzing",
-            progress=10,
-            generated=0,
-            total=10,
-            files=[],
-            error=None,
-            start_time=start_time,
-            end_time=end_time,
-        )
-
-        print(
-            "STEP 1: Analyzing selected range..."
-        )
-
-        update_status(
-            filename,
-            step="finding_highlights",
-            progress=25,
-            generated=0,
-            total=10,
-        )
-
-        print(
-            "STEP 2: Finding quality highlights..."
-        )
-
-        def progress_callback(
-            progress,
-            generated=0,
-            total=0,
-        ):
-
-            try:
-
-                progress = int(
-                    round(float(progress))
-                )
-
-            except (
-                TypeError,
-                ValueError,
-            ):
-
-                progress = 40
-
-            progress = max(
-                40,
-                min(90, progress),
-            )
-
-            update_status(
-                filename,
-                status="processing",
-                step="generating_shorts",
-                progress=progress,
-                generated=generated,
-                total=total or 10,
-                files=get_short_files(),
-            )
-
-            print(
-                f"PROGRESS: {progress}% | "
-                f"Generated: "
-                f"{generated}/{total}"
-            )
-
-        update_status(
-            filename,
-            step="generating_shorts",
-            progress=40,
-            generated=0,
-            total=10,
-        )
-
-        print(
-            "STEP 3: Generating shorts..."
-        )
-
-        files = process_video(
-            video_path,
-            range_start=start_time,
-            range_end=end_time,
-            model=model,
-            progress_callback=progress_callback,
-        )
-
-        if files is None:
-            files = []
-
-        final_files = []
-
-        for file in files:
-
-            if isinstance(file, str):
-
-                final_files.append(
-                    os.path.basename(file)
-                )
-
-        if not final_files:
-
-            final_files = get_short_files()
-
-        if len(final_files) == 0:
-
-            raise RuntimeError(
-                "Hech qanday short yaratilmadi."
-            )
-
-        update_status(
-            filename,
-            step="finishing",
-            progress=95,
-            generated=len(final_files),
-            total=len(final_files),
-            files=final_files,
-        )
-
-        update_status(
-            filename,
-            status="completed",
-            step="completed",
-            progress=100,
-            generated=len(final_files),
-            total=len(final_files),
-            files=final_files,
-            error=None,
-        )
-
-        print()
-        print("=" * 60)
-        print("LOCAL VIDEO PROCESSING COMPLETED")
-        print(
-            f"Generated: {len(final_files)}"
-        )
-        print("=" * 60)
-        print()
-
-    except Exception as e:
-
-        print()
-        print("=" * 60)
-        print("LOCAL BACKGROUND PROCESSING ERROR")
-        print(f"Error: {e}")
-        print("=" * 60)
-        print()
-
-        update_status(
-            filename,
-            status="error",
-            step="error",
-            progress=0,
-            generated=0,
-            total=10,
-            files=[],
-            error=str(e),
-        )
-
-
-# ============================================================
-# AUTH
-# ============================================================
 
 def create_access_token(
     data: dict,
@@ -498,6 +579,720 @@ def create_access_token(
     )
 
 
+# ============================================================
+# LOCAL BACKGROUND PROCESSING
+# ============================================================
+
+def _safe_json(value):
+    try:
+        return json.dumps(value or [], ensure_ascii=False)
+    except Exception:
+        return "[]"
+
+
+def _probe_short_duration(path: str) -> float:
+    try:
+        probe = ffmpeg.probe(path)
+        value = probe.get("format", {}).get("duration")
+        return float(value) if value is not None else 0.0
+    except Exception as e:
+        print(f"Short duration probe error: {path}: {e}")
+        return 0.0
+
+
+def _sync_job_status(
+    job_id: int,
+    project_id: int,
+    filename: str,
+    **values,
+):
+    """Update both the in-memory status and the database job."""
+    update_status(filename, **values)
+
+    db = SessionLocal()
+    try:
+        job = db.query(ProductionJob).filter(
+            ProductionJob.id == job_id
+        ).first()
+        project = db.query(Project).filter(
+            Project.id == project_id
+        ).first()
+
+        if job:
+            for key in (
+                "status",
+                "step",
+                "progress",
+                "generated",
+                "total",
+                "error",
+                "start_time",
+                "end_time",
+            ):
+                if key in values and hasattr(job, key):
+                    setattr(job, key, values[key])
+
+            if "files" in values and hasattr(job, "files"):
+                job.files = _safe_json(values["files"])
+
+        if project and "status" in values:
+            project.status = values["status"]
+
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print("JOB DB STATUS UPDATE ERROR:", e)
+    finally:
+        db.close()
+
+
+def _save_generated_videos(
+    job_id: int,
+    project_id: int,
+    user_id: int,
+    files: list[str],
+):
+    """Persist generated shorts so /projects can display them."""
+    db = SessionLocal()
+    try:
+        job = db.query(ProductionJob).filter(
+            ProductionJob.id == job_id
+        ).first()
+
+        for raw_file in files:
+            filename = os.path.basename(str(raw_file))
+            if not filename:
+                continue
+
+            path = os.path.join(EXPORT_FOLDER, filename)
+            if not os.path.isfile(path):
+                # process_video may return an absolute path or a relative path
+                candidate = str(raw_file)
+                if os.path.isfile(candidate):
+                    path = candidate
+                else:
+                    print(f"Generated file not found, skipping DB row: {filename}")
+                    continue
+
+            existing = db.query(GeneratedVideo).filter(
+                GeneratedVideo.project_id == project_id,
+                GeneratedVideo.user_id == user_id,
+                GeneratedVideo.filename == filename,
+            ).first()
+
+            if existing:
+                continue
+
+            duration = _probe_short_duration(path)
+            video = GeneratedVideo(
+                user_id=user_id,
+                project_id=project_id,
+                production_id=job_id,
+                filename=filename,
+                duration=duration,
+            )
+            db.add(video)
+
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print("GENERATED VIDEO DB ERROR:", e)
+        raise
+    finally:
+        db.close()
+
+
+class JobCancelled(Exception):
+    """Raised when a user cancels an AI processing job."""
+
+
+def _get_job_status(job_id: int):
+    db = SessionLocal()
+    try:
+        job = db.query(ProductionJob).filter(ProductionJob.id == job_id).first()
+        if not job:
+            return None
+        return job.status
+    finally:
+        db.close()
+
+
+def _is_job_cancelled(job_id: int) -> bool:
+    return _get_job_status(job_id) == "cancelled"
+
+
+def _clear_processing_status(filename: str):
+    if not filename:
+        return
+    with PROCESSING_LOCK:
+        PROCESSING_STATUS.pop(filename, None)
+
+
+def _set_project_status_from_jobs(db, project_id: int):
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        return
+    active = (
+        db.query(ProductionJob)
+        .filter(
+            ProductionJob.project_id == project_id,
+            ProductionJob.status.in_(["queued", "processing"]),
+        )
+        .count()
+    )
+    project.status = "processing" if active else "completed"
+
+
+def process_video_background(
+    filename: str,
+    video_path: str,
+    start_time: float,
+    end_time: float,
+    job_id: int,
+    project_id: int,
+    user_id: int,
+):
+    """Run one queued AI job and keep DB as the source of truth."""
+    try:
+        if _is_job_cancelled(job_id):
+            _clear_processing_status(filename)
+            return
+
+        _sync_job_status(
+            job_id, project_id, filename,
+            status="processing", step="analyzing", progress=5,
+            generated=0, total=10, files=[], error=None,
+            start_time=start_time, end_time=end_time,
+        )
+
+        _sync_job_status(
+            job_id, project_id, filename,
+            status="processing", step="finding_highlights", progress=15,
+            generated=0, total=10, files=[],
+        )
+
+        def progress_callback(progress, generated=0, total=0):
+            if _is_job_cancelled(job_id):
+                raise JobCancelled(f"Job {job_id} cancelled by user")
+            try:
+                progress_value = int(round(float(progress)))
+            except (TypeError, ValueError):
+                progress_value = 40
+            progress_value = max(20, min(90, progress_value))
+            _sync_job_status(
+                job_id, project_id, filename,
+                status="processing", step="generating_shorts",
+                progress=progress_value, generated=int(generated or 0),
+                total=int(total or 10), files=[], error=None,
+            )
+
+        _sync_job_status(
+            job_id, project_id, filename,
+            status="processing", step="generating_shorts", progress=20,
+            generated=0, total=10, files=[], error=None,
+        )
+
+        try:
+            files = process_video(
+                video_path, range_start=start_time, range_end=end_time,
+                model=model, progress_callback=progress_callback,
+            )
+        except TypeError:
+            files = process_video(
+                video_path, range_start=start_time, range_end=end_time,
+                model=model,
+            )
+
+        # A cancellation can happen while an older ai_service is running
+        # without callback support. Never publish its results after cancel.
+        if _is_job_cancelled(job_id):
+            _clear_processing_status(filename)
+            return
+
+        files = files or []
+        final_files = [
+            os.path.basename(item)
+            for item in files
+            if isinstance(item, str)
+        ]
+        if not final_files:
+            final_files = get_short_files()
+
+        final_files = [
+            name for name in final_files
+            if name.endswith(".mp4")
+            and os.path.isfile(os.path.join(EXPORT_FOLDER, name))
+        ]
+        if not final_files:
+            raise RuntimeError(
+                "Hech qanday short yaratilmadi. process_video bo'sh natija qaytardi."
+            )
+
+        if _is_job_cancelled(job_id):
+            _clear_processing_status(filename)
+            return
+
+        _sync_job_status(
+            job_id, project_id, filename,
+            status="processing", step="saving_results", progress=94,
+            generated=len(final_files), total=len(final_files),
+            files=final_files, error=None,
+        )
+
+        _save_generated_videos(
+            job_id=job_id, project_id=project_id, user_id=user_id, files=final_files
+        )
+
+        if _is_job_cancelled(job_id):
+            # Do not change cancelled -> completed.
+            _clear_processing_status(filename)
+            return
+
+        _sync_job_status(
+            job_id, project_id, filename,
+            status="completed", step="completed", progress=100,
+            generated=len(final_files), total=len(final_files),
+            files=final_files, error=None,
+        )
+        _clear_processing_status(filename)
+
+        print(f"AI JOB {job_id} COMPLETED: {len(final_files)} shorts")
+
+    except JobCancelled:
+        _clear_processing_status(filename)
+        return
+    except Exception as e:
+        print("LOCAL BACKGROUND PROCESSING ERROR:", repr(e))
+        traceback.print_exc()
+        if _is_job_cancelled(job_id):
+            _clear_processing_status(filename)
+            return
+        _sync_job_status(
+            job_id, project_id, filename,
+            status="error", step="error", progress=0,
+            generated=0, total=10, files=[], error=str(e),
+        )
+        _clear_processing_status(filename)
+
+
+# ============================================================
+# LOCAL AI JOB QUEUE
+# ============================================================
+
+_queue_lock = threading.Lock()
+_queue_worker = None
+
+
+def _get_next_queued_job():
+    """
+    Database'dan eng eski queued jobni oladi
+    va darhol processing holatiga o'tkazadi.
+
+    Bu bir xil jobni ikki marta process qilishning
+    oldini oladi.
+    """
+
+    db = SessionLocal()
+
+    try:
+        job = (
+            db.query(ProductionJob)
+            .filter(
+                ProductionJob.status == "queued"
+            )
+            .order_by(
+                ProductionJob.id.asc()
+            )
+            .first()
+        )
+
+        if not job:
+            return None
+
+        # ----------------------------------------------------
+        # JOBNI DARHOL PROCESSING QILAMIZ
+        # ----------------------------------------------------
+
+        job.status = "processing"
+
+        if hasattr(job, "step"):
+            job.step = "starting"
+
+        if hasattr(job, "progress"):
+            job.progress = 0
+
+        db.commit()
+        db.refresh(job)
+
+        # ----------------------------------------------------
+        # PROJECTNI OLISH
+        # ----------------------------------------------------
+
+        project = (
+            db.query(Project)
+            .filter(
+                Project.id == job.project_id
+            )
+            .first()
+        )
+
+        if not project:
+            job.status = "error"
+
+            if hasattr(job, "step"):
+                job.step = "error"
+
+            db.commit()
+
+            print(
+                f"QUEUE ERROR: Project not found "
+                f"for job {job.id}"
+            )
+
+            return None
+
+        filename = project.filename
+
+        return {
+            "id": job.id,
+            "project_id": job.project_id,
+            "user_id": job.user_id,
+            "filename": filename,
+            "start_time": job.start_time,
+            "end_time": job.end_time,
+        }
+
+    except Exception as e:
+
+        db.rollback()
+
+        print()
+        print("=" * 70)
+        print("QUEUE GET JOB ERROR")
+        print(repr(e))
+        print("=" * 70)
+
+        traceback.print_exc()
+
+        return None
+
+    finally:
+
+        db.close()
+
+
+def _mark_queue_job_error(
+    job_id,
+    project_id,
+    filename,
+    error_message,
+):
+    """
+    Queue jobni error holatiga o'tkazadi.
+    """
+
+    try:
+
+        _sync_job_status(
+            job_id,
+            project_id,
+            filename,
+            status="error",
+            step="error",
+            progress=0,
+            generated=0,
+            total=10,
+            files=[],
+            error=str(error_message),
+        )
+
+    except Exception as e:
+
+        print()
+        print("=" * 70)
+        print("QUEUE ERROR STATUS UPDATE FAILED")
+        print(repr(e))
+        print("=" * 70)
+
+        traceback.print_exc()
+
+
+def _run_ai_queue():
+    """
+    ONE AI WORKER.
+
+    Bir vaqtning o'zida faqat bitta video process qiladi.
+
+    Worker doim ishlaydi va database'dan queued joblarni
+    navbat bilan olib process qiladi.
+    """
+
+    print()
+    print("=" * 70)
+    print("CLIPFORGE AI QUEUE WORKER STARTED")
+    print("=" * 70)
+    print()
+
+    while True:
+
+        job = None
+
+        try:
+
+            # ------------------------------------------------
+            # NEXT JOB
+            # ------------------------------------------------
+
+            job = _get_next_queued_job()
+
+            if not job:
+
+                time.sleep(1)
+
+                continue
+
+            # ------------------------------------------------
+            # JOB DATA
+            # ------------------------------------------------
+
+            job_id = job["id"]
+            project_id = job["project_id"]
+            user_id = job["user_id"]
+            filename = job["filename"]
+            start_time = job["start_time"]
+            end_time = job["end_time"]
+
+            # ------------------------------------------------
+            # VIDEO PATH
+            # ------------------------------------------------
+
+            video_path = os.path.join(
+                UPLOAD_FOLDER,
+                filename,
+            )
+
+            print()
+            print("=" * 70)
+            print("QUEUE JOB STARTING")
+            print("=" * 70)
+
+            print(
+                f"Job ID      : {job_id}"
+            )
+
+            print(
+                f"Project ID  : {project_id}"
+            )
+
+            print(
+                f"User ID     : {user_id}"
+            )
+
+            print(
+                f"Filename    : {filename}"
+            )
+
+            print(
+                f"Start time  : {start_time}"
+            )
+
+            print(
+                f"End time    : {end_time}"
+            )
+
+            print(
+                f"Video path  : {video_path}"
+            )
+
+            print("=" * 70)
+
+            # ------------------------------------------------
+            # CHECK FILENAME
+            # ------------------------------------------------
+
+            if not filename:
+
+                error_message = (
+                    "Project filename is empty."
+                )
+
+                print(
+                    "QUEUE ERROR:",
+                    error_message,
+                )
+
+                _mark_queue_job_error(
+                    job_id,
+                    project_id,
+                    filename or "",
+                    error_message,
+                )
+
+                continue
+
+            # ------------------------------------------------
+            # CHECK FILE
+            # ------------------------------------------------
+
+            if not os.path.isfile(video_path):
+
+                error_message = (
+                    f"Video file not found: "
+                    f"{video_path}"
+                )
+
+                print()
+                print(
+                    "QUEUE ERROR:",
+                    error_message,
+                )
+
+                _mark_queue_job_error(
+                    job_id,
+                    project_id,
+                    filename,
+                    error_message,
+                )
+
+                continue
+
+            # ------------------------------------------------
+            # FILE SIZE
+            # ------------------------------------------------
+
+            try:
+
+                file_size = os.path.getsize(
+                    video_path
+                )
+
+                print(
+                    f"Video size  : "
+                    f"{file_size / (1024 * 1024):.2f} MB"
+                )
+
+            except Exception:
+
+                pass
+
+            # ------------------------------------------------
+            # PROCESS VIDEO
+            # ------------------------------------------------
+
+            print()
+            print(
+                f"Starting AI processing for job "
+                f"{job_id}..."
+            )
+
+            process_video_background(
+                filename=filename,
+                video_path=video_path,
+                start_time=start_time,
+                end_time=end_time,
+                job_id=job_id,
+                project_id=project_id,
+                user_id=user_id,
+            )
+
+            # ------------------------------------------------
+            # FINISHED
+            # ------------------------------------------------
+
+            print()
+            print("=" * 70)
+            print(
+                f"QUEUE JOB {job_id} FINISHED"
+            )
+            print("=" * 70)
+            print()
+
+        except Exception as e:
+
+            print()
+            print("=" * 70)
+            print("QUEUE WORKER ERROR")
+            print("=" * 70)
+
+            print(
+                repr(e)
+            )
+
+            print("=" * 70)
+
+            traceback.print_exc()
+
+            # ------------------------------------------------
+            # AGAR JOB MA'LUM BO'LSA ERRORGA O'TKAZAMIZ
+            # ------------------------------------------------
+
+            if job is not None:
+
+                try:
+
+                    _mark_queue_job_error(
+                        job["id"],
+                        job["project_id"],
+                        job["filename"],
+                        str(e),
+                    )
+
+                except Exception as status_error:
+
+                    print(
+                        "Could not update failed job:",
+                        repr(status_error),
+                    )
+
+            # ------------------------------------------------
+            # WORKER O'LIB QOLMASIN
+            # ------------------------------------------------
+
+            time.sleep(2)
+
+
+def ensure_queue_worker():
+    """
+    Agar AI queue worker ishlamayotgan bo'lsa,
+    yangi worker ishga tushiradi.
+    """
+
+    global _queue_worker
+
+    with _queue_lock:
+
+        # ----------------------------------------------------
+        # WORKER ALLAQACHON ISHLAYAPTIMI?
+        # ----------------------------------------------------
+
+        if (
+            _queue_worker is not None
+            and _queue_worker.is_alive()
+        ):
+
+            return
+
+        # ----------------------------------------------------
+        # YANGI WORKER
+        # ----------------------------------------------------
+
+        _queue_worker = threading.Thread(
+            target=_run_ai_queue,
+            daemon=True,
+            name="clipforge-ai-queue",
+        )
+
+        _queue_worker.start()
+
+        print(
+            "AI queue worker launched."
+        )
+
+
+# ============================================================
+# AUTH HELPERS
+# ============================================================
+
 def get_current_user(
     token: str = Depends(
         oauth2_scheme
@@ -522,6 +1317,7 @@ def get_current_user(
             return None
 
         db = SessionLocal()
+
 
         try:
 
@@ -549,6 +1345,44 @@ def get_current_user(
         return None
 
 
+def get_current_admin(
+    current_user=Depends(
+        get_current_user
+    ),
+):
+
+    if current_user is None:
+
+        raise HTTPException(
+            status_code=401,
+            detail="Not authenticated",
+        )
+
+    if not getattr(
+        current_user,
+        "is_active",
+        True,
+    ):
+
+        raise HTTPException(
+            status_code=403,
+            detail="Account is inactive",
+        )
+
+    if getattr(
+        current_user,
+        "role",
+        "user",
+    ) != "admin":
+
+        raise HTTPException(
+            status_code=403,
+            detail="Admin access required",
+        )
+
+    return current_user
+
+
 # ============================================================
 # HOME
 # ============================================================
@@ -557,7 +1391,7 @@ def get_current_user(
 def home():
 
     return {
-        "message": "Welcome to ClipForge AI 🚀",
+        "message": "Welcome to ClipForge AI рџљЂ",
         "status": "running",
     }
 
@@ -613,17 +1447,33 @@ def celery_health():
         }
 
 
+
 # ============================================================
-# UPLOAD
+# UPLOAD VIDEO + CREATE PROJECT
 # ============================================================
 
 @app.post("/upload")
 async def upload_video(
     file: UploadFile = File(...),
+    current_user=Depends(get_current_user),
 ):
+    if current_user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Not authenticated",
+        )
+
+    if not getattr(
+        current_user,
+        "is_active",
+        True,
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Account is inactive",
+        )
 
     if not file.filename:
-
         raise HTTPException(
             status_code=400,
             detail="Fayl nomi topilmadi.",
@@ -633,10 +1483,38 @@ async def upload_video(
         file.filename
     )
 
+    # ========================================================
+    # SAFE UNIQUE FILENAME
+    # ========================================================
+
+    name, extension = os.path.splitext(
+        filename
+    )
+
+    safe_filename = filename
+    counter = 1
+
+    while os.path.exists(
+        os.path.join(
+            UPLOAD_FOLDER,
+            safe_filename,
+        )
+    ):
+        safe_filename = (
+            f"{name}_{counter}{extension}"
+        )
+        counter += 1
+
+    filename = safe_filename
+
     file_path = os.path.join(
         UPLOAD_FOLDER,
         filename,
     )
+
+    # ========================================================
+    # SAVE VIDEO
+    # ========================================================
 
     try:
 
@@ -667,16 +1545,626 @@ async def upload_video(
     if not os.path.isfile(
         file_path
     ):
-
         raise HTTPException(
             status_code=500,
             detail="Video saqlanmadi.",
         )
 
-    return {
-        "status": "success",
-        "filename": filename,
-    }
+    # ========================================================
+    # VIDEO DURATION
+    # ========================================================
+
+    duration = 0.0
+
+    try:
+
+        duration = get_video_duration(
+            file_path
+        )
+
+    except Exception as e:
+
+        print(
+            "Video duration error:",
+            e,
+        )
+
+    # ========================================================
+    # CREATE PROJECT
+    # ========================================================
+
+    db = SessionLocal()
+
+    try:
+
+        project_name = os.path.splitext(
+            filename
+        )[0]
+
+        project = Project(
+            user_id=current_user.id,
+            name=project_name,
+            filename=filename,
+            status="uploaded",
+            duration=duration,
+        )
+
+        db.add(project)
+
+        db.commit()
+
+        db.refresh(project)
+
+        # ====================================================
+        # DEBUG
+        # ====================================================
+
+        print("=" * 60)
+        print("PROJECT CREATED")
+        print("PROJECT ID:", project.id)
+        print("USER ID:", project.user_id)
+        print("PROJECT NAME:", project.name)
+        print("PROJECT FILENAME:", project.filename)
+        print("=" * 60)
+
+        # ====================================================
+        # RESPONSE
+        # ====================================================
+
+        return {
+            "status": "success",
+            "message": "Video uploaded successfully",
+            "filename": filename,
+            "project_id": project.id,
+            "project": {
+                "id": project.id,
+                "user_id": project.user_id,
+                "name": project.name,
+                "filename": project.filename,
+                "status": project.status,
+                "duration": project.duration,
+                "created_at": (
+                    project.created_at.isoformat()
+                    if project.created_at
+                    else None
+                ),
+            },
+        }
+
+    except Exception as e:
+
+        db.rollback()
+
+        print(
+            "PROJECT CREATE ERROR:",
+            e,
+        )
+
+        # Orphan video cleanup
+
+        try:
+
+            if os.path.isfile(
+                file_path
+            ):
+
+                os.remove(
+                    file_path
+                )
+
+        except Exception as delete_error:
+
+            print(
+                "Uploaded file cleanup error:",
+                delete_error,
+            )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"Project yaratishda xato: "
+                f"{str(e)}"
+            ),
+        )
+
+    finally:
+
+        db.close()
+
+
+
+
+# ============================================================
+# USER PROJECTS
+# ============================================================
+
+@app.get("/projects")
+def get_projects(
+    current_user=Depends(get_current_user),
+):
+    if current_user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Not authenticated",
+        )
+
+    db = SessionLocal()
+
+    try:
+        # ====================================================
+        # ALL USER PROJECTS
+        # ====================================================
+
+        projects = (
+            db.query(Project)
+            .filter(
+                Project.user_id == current_user.id
+            )
+            .order_by(
+                Project.id.desc()
+            )
+            .all()
+        )
+
+        # ====================================================
+        # ALL ACTIVE JOBS FOR THIS USER
+        #
+        # queued + processing
+        #
+        # ID kichik bo'lgan job oldin turadi.
+        # ====================================================
+
+        active_jobs = (
+            db.query(ProductionJob)
+            .filter(
+                ProductionJob.user_id == current_user.id,
+                ProductionJob.status.in_(
+                    [
+                        "queued",
+                        "processing",
+                    ]
+                ),
+            )
+            .order_by(
+                ProductionJob.id.asc()
+            )
+            .all()
+        )
+
+        # ====================================================
+        # QUEUE INFORMATION
+        # ====================================================
+
+        queued_jobs = [
+            job
+            for job in active_jobs
+            if job.status == "queued"
+        ]
+
+        # ====================================================
+        # MAP JOB -> QUEUE POSITION
+        #
+        # queued:
+        #
+        # first queued job  = 1
+        # second queued job = 2
+        # third queued job  = 3
+        #
+        # processing:
+        #
+        # position = 0
+        # ====================================================
+
+        queue_positions = {}
+
+        for index, job in enumerate(
+            queued_jobs,
+            start=1,
+        ):
+            queue_positions[job.id] = index
+
+        # ====================================================
+        # RESULT
+        # ====================================================
+
+        result = []
+
+        for project in projects:
+
+            # =================================================
+            # GENERATED VIDEOS
+            # =================================================
+
+            generated_videos = (
+                db.query(GeneratedVideo)
+                .filter(
+                    GeneratedVideo.project_id == project.id,
+                    GeneratedVideo.user_id == current_user.id,
+                )
+                .order_by(
+                    GeneratedVideo.id.asc()
+                )
+                .all()
+            )
+
+            # =================================================
+            # ACTIVE PRODUCTION JOB
+            # =================================================
+
+            active_job = (
+                db.query(ProductionJob)
+                .filter(
+                    ProductionJob.project_id == project.id,
+                    ProductionJob.user_id == current_user.id,
+                    ProductionJob.status.in_(
+                        [
+                            "queued",
+                            "processing",
+                        ]
+                    ),
+                )
+                .order_by(
+                    ProductionJob.id.desc()
+                )
+                .first()
+            )
+
+            # =================================================
+            # ACTIVE JOB DATA
+            # =================================================
+
+            active_job_data = None
+
+            if active_job:
+
+                # ---------------------------------------------
+                # FILES
+                # ---------------------------------------------
+
+                try:
+                    job_files = json.loads(
+                        active_job.files or "[]"
+                    )
+                except Exception:
+                    job_files = []
+
+                # ---------------------------------------------
+                # STATUS
+                # ---------------------------------------------
+
+                job_status = (
+                    active_job.status
+                    or "queued"
+                )
+
+                # ---------------------------------------------
+                # QUEUE POSITION
+                # ---------------------------------------------
+
+                if job_status == "queued":
+
+                    queue_position = (
+                        queue_positions.get(
+                            active_job.id,
+                            0,
+                        )
+                    )
+
+                else:
+
+                    queue_position = 0
+
+                # ---------------------------------------------
+                # QUEUED COUNT
+                # ---------------------------------------------
+
+                queued_count = len(
+                    queued_jobs
+                )
+
+                # ---------------------------------------------
+                # ACTIVE JOB DATA
+                # ---------------------------------------------
+
+                active_job_data = {
+                    "id": active_job.id,
+
+                    "status": job_status,
+
+                    "step": (
+                        active_job.step
+                        or "queued"
+                    ),
+
+                    "progress": (
+                        active_job.progress
+                        or 0
+                    ),
+
+                    "generated": (
+                        active_job.generated
+                        or 0
+                    ),
+
+                    "total": (
+                        active_job.total
+                        or 10
+                    ),
+
+                    "files": job_files,
+
+                    "error": active_job.error,
+
+                    "start_time": (
+                        active_job.start_time
+                        or 0
+                    ),
+
+                    "end_time": (
+                        active_job.end_time
+                        or 0
+                    ),
+
+                    # =========================================
+                    # QUEUE DATA
+                    # =========================================
+
+                    "queue_position": (
+                        queue_position
+                    ),
+
+                    "queued_count": (
+                        queued_count
+                    ),
+                }
+
+            # =================================================
+            # PROJECT STATUS
+            # =================================================
+
+            project_status = (
+                project.status
+                or "uploaded"
+            )
+
+            # =================================================
+            # IF ACTIVE JOB EXISTS
+            #
+            # Project status should reflect the job.
+            # =================================================
+
+            if active_job:
+
+                if active_job.status == "queued":
+
+                    project_status = "queued"
+
+                elif active_job.status == "processing":
+
+                    project_status = "processing"
+
+            # =================================================
+            # PROJECT RESULT
+            # =================================================
+
+            result.append(
+                {
+                    "id": project.id,
+
+                    "name": project.name,
+
+                    "filename": project.filename,
+
+                    "status": project_status,
+
+                    "duration": (
+                        project.duration
+                        or 0
+                    ),
+
+                    "created_at": (
+                        project.created_at.isoformat()
+                        if project.created_at
+                        else None
+                    ),
+
+                    "updated_at": (
+                        project.updated_at.isoformat()
+                        if project.updated_at
+                        else None
+                    ),
+
+                    # =========================================
+                    # ACTIVE JOB
+                    # =========================================
+
+                    "active_job": active_job_data,
+
+                    # =========================================
+                    # GENERATED SHORTS
+                    # =========================================
+
+                    "generated_count": len(
+                        generated_videos
+                    ),
+
+                    "generated_videos": [
+                        {
+                            "id": video.id,
+
+                            "filename": video.filename,
+
+                            "duration": (
+                                video.duration
+                                or 0
+                            ),
+
+                            "production_id": (
+                                video.production_id
+                            ),
+
+                            "created_at": (
+                                video.created_at.isoformat()
+                                if video.created_at
+                                else None
+                            ),
+                        }
+                        for video in generated_videos
+                    ],
+                }
+            )
+
+        # ====================================================
+        # FINAL RESPONSE
+        # ====================================================
+
+        return {
+            "status": "success",
+
+            "count": len(result),
+
+            # Umumiy queue ma'lumotlari
+            "queue": {
+                "active_jobs": len(
+                    active_jobs
+                ),
+
+                "processing_jobs": len(
+                    [
+                        job
+                        for job in active_jobs
+                        if job.status == "processing"
+                    ]
+                ),
+
+                "queued_jobs": len(
+                    queued_jobs
+                ),
+            },
+
+            "projects": result,
+        }
+
+    finally:
+        db.close()
+
+
+
+
+# ============================================================
+# GET SINGLE PROJECT
+# ============================================================
+
+@app.get("/projects/{project_id}")
+def get_project(
+    project_id: int,
+    current_user=Depends(get_current_user),
+):
+    if current_user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Not authenticated",
+        )
+
+    db = SessionLocal()
+
+    try:
+
+        # ----------------------------------------------------
+        # PROJECT
+        # ----------------------------------------------------
+
+        project = (
+            db.query(Project)
+            .filter(
+                Project.id == project_id,
+                Project.user_id == current_user.id,
+            )
+            .first()
+        )
+
+        if not project:
+            raise HTTPException(
+                status_code=404,
+                detail="Project not found",
+            )
+
+        # ----------------------------------------------------
+        # GENERATED SHORTS
+        # ----------------------------------------------------
+
+        generated_videos = (
+            db.query(GeneratedVideo)
+            .filter(
+                GeneratedVideo.project_id == project.id,
+                GeneratedVideo.user_id == current_user.id,
+            )
+            .order_by(
+                GeneratedVideo.id.asc()
+            )
+            .all()
+        )
+
+        # ----------------------------------------------------
+        # RESPONSE
+        # ----------------------------------------------------
+
+        return {
+            "status": "success",
+
+            "project": {
+                "id": project.id,
+                "name": project.name,
+                "filename": project.filename,
+                "status": project.status,
+                "duration": project.duration,
+
+                "created_at": (
+                    project.created_at.isoformat()
+                    if project.created_at
+                    else None
+                ),
+
+                "updated_at": (
+                    project.updated_at.isoformat()
+                    if project.updated_at
+                    else None
+                ),
+
+                # ==========================================
+                # GENERATED SHORTS
+                # ==========================================
+
+                "videos": [
+                    {
+                        "id": video.id,
+                        "filename": video.filename,
+                        "duration": video.duration,
+
+                        "url": (
+                            f"/download/"
+                            f"{video.filename}"
+                        ),
+
+                        "created_at": (
+                            video.created_at.isoformat()
+                            if video.created_at
+                            else None
+                        ),
+                    }
+
+                    for video in generated_videos
+                ],
+
+                "generated_count": len(
+                    generated_videos
+                ),
+            },
+        }
+
+    finally:
+
+        db.close()
 
 
 # ============================================================
@@ -706,9 +2194,7 @@ def analyze_video(
 
     try:
 
-        probe = ffmpeg.probe(
-            path
-        )
+        probe = ffmpeg.probe(path)
 
         video_stream = next(
             (
@@ -779,7 +2265,7 @@ def extract_audio(
 
     video_path = os.path.join(
         UPLOAD_FOLDER,
-        filename
+        filename,
     )
 
     if not os.path.isfile(
@@ -847,7 +2333,7 @@ def transcribe_audio(
 
     audio_path = os.path.join(
         UPLOAD_FOLDER,
-        filename
+        filename,
     )
 
     if not os.path.isfile(
@@ -989,54 +2475,18 @@ def test_cut(
 @app.post("/generate-shorts/{filename}")
 def generate_shorts(
     filename: str,
+    background_tasks: BackgroundTasks,
+    current_user=Depends(get_current_user),
 ):
-
-    filename = os.path.basename(
-        filename
+    """Backward-compatible endpoint used by the existing frontend."""
+    return process_video_endpoint(
+        filename=filename,
+        background_tasks=background_tasks,
+        current_user=current_user,
+        body=None,
+        range_start=None,
+        range_end=None,
     )
-
-    video_path = os.path.join(
-        UPLOAD_FOLDER,
-        filename,
-    )
-
-    if not os.path.isfile(
-        video_path
-    ):
-
-        raise HTTPException(
-            status_code=404,
-            detail="Video topilmadi.",
-        )
-
-    try:
-
-        files = process_video(
-            video_path,
-            model=model,
-        )
-
-        if files is None:
-            files = []
-
-        return {
-            "status": "success",
-            "generated": len(files),
-            "files": files,
-        }
-
-    except Exception as e:
-
-        print(
-            "GENERATE SHORTS ERROR:"
-        )
-
-        print(e)
-
-        raise HTTPException(
-            status_code=500,
-            detail=str(e),
-        )
 
 
 # ============================================================
@@ -1047,304 +2497,334 @@ def generate_shorts(
 def process_video_endpoint(
     filename: str,
     background_tasks: BackgroundTasks,
+    current_user=Depends(get_current_user),
     body: ProcessRequest | None = None,
     range_start: float | None = Query(None),
     range_end: float | None = Query(None),
 ):
+    """
+    Create one AI production job.
 
-    filename = os.path.basename(
-        filename
-    )
+    Credit system:
+        1 minute of selected video = 1 credit.
+    """
+
+    # ========================================================
+    # AUTH
+    # ========================================================
+
+    if current_user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Not authenticated",
+        )
+
+    filename = os.path.basename(filename)
 
     video_path = os.path.join(
         UPLOAD_FOLDER,
         filename,
     )
 
-    # --------------------------------------------------------
-    # CHECK VIDEO
-    # --------------------------------------------------------
+    # ========================================================
+    # VIDEO EXISTS
+    # ========================================================
 
-    if not os.path.isfile(
-        video_path
-    ):
-
+    if not os.path.isfile(video_path):
         raise HTTPException(
             status_code=404,
             detail="Video topilmadi.",
         )
 
-    # --------------------------------------------------------
-    # GET DURATION
-    # --------------------------------------------------------
+    db = SessionLocal()
+
+    credits_charged = 0
+    credit_charged_successfully = False
 
     try:
 
-        total_duration = (
-            get_video_duration(
-                video_path
+        # ====================================================
+        # PROJECT
+        # ====================================================
+
+        project = (
+            db.query(Project)
+            .filter(
+                Project.filename == filename,
+                Project.user_id == current_user.id,
             )
+            .first()
         )
 
-    except Exception as e:
+        if not project:
+            raise HTTPException(
+                status_code=404,
+                detail="Project topilmadi.",
+            )
 
-        raise HTTPException(
-            status_code=500,
-            detail=str(e),
+        # ====================================================
+        # VIDEO DURATION
+        # ====================================================
+
+        total_duration = get_video_duration(
+            video_path
         )
 
-    # --------------------------------------------------------
-    # GET RANGE
-    # --------------------------------------------------------
+        if total_duration <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Video duration aniqlanmadi.",
+            )
 
-    if range_start is not None:
+        # ====================================================
+        # SELECTED RANGE
+        # ====================================================
 
         start_time = float(
             range_start
+            if range_start is not None
+            else (
+                body.start_time
+                if body is not None
+                else 0.0
+            )
         )
-
-    elif body is not None:
-
-        start_time = float(
-            body.start_time
-        )
-
-    else:
-
-        start_time = 0.0
-
-    if range_end is not None:
 
         end_time = float(
             range_end
-        )
-
-    elif body is not None:
-
-        if body.end_time is None:
-
-            end_time = total_duration
-
-        else:
-
-            end_time = float(
+            if range_end is not None
+            else (
                 body.end_time
-            )
-
-    else:
-
-        end_time = total_duration
-
-    # --------------------------------------------------------
-    # NORMALIZE
-    # --------------------------------------------------------
-
-    start_time = max(
-        0.0,
-        start_time,
-    )
-
-    end_time = min(
-        total_duration,
-        end_time,
-    )
-
-    selected_duration = (
-        end_time - start_time
-    )
-
-    # --------------------------------------------------------
-    # VALIDATION
-    # --------------------------------------------------------
-
-    if selected_duration <= 0:
-
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Start time va end time "
-                "noto'g'ri."
-            ),
-        )
-
-    if selected_duration > 3600:
-
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Tanlangan video oralig'i "
-                "maksimum 60 daqiqa "
-                "bo'lishi kerak."
-            ),
-        )
-
-    # --------------------------------------------------------
-    # CURRENT STATUS
-    # --------------------------------------------------------
-
-    with PROCESSING_LOCK:
-
-        current_status = (
-            PROCESSING_STATUS.get(
-                filename
+                if body is not None
+                and body.end_time is not None
+                else total_duration
             )
         )
 
-    if current_status:
+        # ====================================================
+        # NORMALIZE RANGE
+        # ====================================================
 
-        current_state = (
-            current_status.get(
-                "status"
+        start_time = max(
+            0.0,
+            start_time,
+        )
+
+        end_time = min(
+            total_duration,
+            end_time,
+        )
+
+        selected_duration = (
+            end_time - start_time
+        )
+
+        # ====================================================
+        # VALIDATE RANGE
+        # ====================================================
+
+        if selected_duration <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Start time va end time noto'g'ri."
+                ),
+            )
+
+        # ====================================================
+        # MAX 60 MINUTES
+        # ====================================================
+
+        if selected_duration > 3600:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Tanlangan video oralig'i "
+                    "maksimum 60 daqiqa bo'lishi kerak."
+                ),
+            )
+
+        # ====================================================
+        # CREDIT CALCULATION
+        # ====================================================
+
+        credits_required = (
+            calculate_generation_credits(
+                selected_duration
             )
         )
 
-        # ----------------------------------------------------
-        # ALREADY QUEUED / PROCESSING
-        # ----------------------------------------------------
+        duration_minutes = round(
+            selected_duration / 60,
+            2,
+        )
 
-        if current_state in (
-            "queued",
-            "processing",
-        ):
+        # ====================================================
+        # ACTIVE JOB CHECK
+        # ====================================================
+
+        existing_job = (
+            db.query(ProductionJob)
+            .filter(
+                ProductionJob.project_id == project.id,
+                ProductionJob.user_id == current_user.id,
+                ProductionJob.status.in_(
+                    [
+                        "queued",
+                        "processing",
+                    ]
+                ),
+            )
+            .order_by(
+                ProductionJob.id.desc()
+            )
+            .first()
+        )
+
+        if existing_job:
+
+            try:
+                existing_files = json.loads(
+                    existing_job.files or "[]"
+                )
+            except Exception:
+                existing_files = []
 
             return {
-                "status": current_state,
+                "status": existing_job.status,
                 "filename": filename,
-                "progress": current_status.get(
-                    "progress",
-                    0,
-                ),
-                "step": current_status.get(
-                    "step",
-                    "processing",
-                ),
-                "generated": current_status.get(
-                    "generated",
-                    0,
-                ),
-                "total": current_status.get(
-                    "total",
-                    10,
-                ),
-                "files": current_status.get(
-                    "files",
-                    [],
-                ),
-                "task_id": current_status.get(
-                    "task_id"
-                ),
-                "start_time": current_status.get(
-                    "start_time",
-                    start_time,
-                ),
-                "end_time": current_status.get(
-                    "end_time",
-                    end_time,
+                "project_id": project.id,
+                "job_id": existing_job.id,
+                "task_id": existing_job.task_id,
+                "progress": existing_job.progress or 0,
+                "step": existing_job.step or "queued",
+                "generated": existing_job.generated or 0,
+                "total": existing_job.total or 10,
+                "files": existing_files,
+                "start_time": existing_job.start_time,
+                "end_time": existing_job.end_time,
+                "error": existing_job.error,
+                "credits_required": credits_required,
+                "credits_charged": 0,
+                "credits_remaining": get_user_credits(
+                    db,
+                    current_user,
                 ),
                 "message": (
-                    "Video allaqachon "
-                    "qayta ishlanmoqda."
+                    "Bu video uchun "
+                    "allaqachon active job mavjud."
                 ),
             }
 
-        # ----------------------------------------------------
-        # COMPLETED
-        # ----------------------------------------------------
+        # ====================================================
+        # CHECK CREDITS
+        # ====================================================
 
-        if current_state == "completed":
+        try:
 
-            return {
-                "status": "completed",
-                "filename": filename,
-                "progress": 100,
-                "generated": current_status.get(
-                    "generated",
-                    0,
-                ),
-                "total": current_status.get(
-                    "total",
-                    10,
-                ),
-                "files": current_status.get(
-                    "files",
-                    [],
-                ),
-                "task_id": current_status.get(
-                    "task_id"
-                ),
-                "start_time": current_status.get(
-                    "start_time",
-                    start_time,
-                ),
-                "end_time": current_status.get(
-                    "end_time",
-                    end_time,
-                ),
-                "error": None,
-            }
+            current_credits = get_user_credits(
+                db,
+                current_user,
+            )
 
-        # ----------------------------------------------------
-        # ERROR
-        # ----------------------------------------------------
-
-        if current_state == "error":
-
-            with PROCESSING_LOCK:
-
-                PROCESSING_STATUS.pop(
-                    filename,
-                    None,
+            if current_credits < credits_required:
+                raise ValueError(
+                    f"Not enough AI credits. "
+                    f"Required: {credits_required}. "
+                    f"Available: {current_credits}."
                 )
 
-    # --------------------------------------------------------
-    # CLEAN OLD SHORTS
-    # --------------------------------------------------------
+        except ValueError as credit_error:
 
-    cleanup_old_shorts()
+            current_credits = get_user_credits(
+                db,
+                current_user,
+            )
 
-    # --------------------------------------------------------
-    # INITIAL STATUS
-    # --------------------------------------------------------
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "code": "INSUFFICIENT_CREDITS",
+                    "message": str(credit_error),
+                    "credits_required": credits_required,
+                    "credits_available": current_credits,
+                    "duration_minutes": duration_minutes,
+                },
+            )
 
-    update_status(
-        filename,
-        status="queued",
-        step="queued",
-        progress=0,
-        generated=0,
-        total=10,
-        files=[],
-        error=None,
-        task_id=None,
-        start_time=start_time,
-        end_time=end_time,
-    )
+        # ====================================================
+        # CREATE PRODUCTION JOB
+        # ====================================================
 
-    # --------------------------------------------------------
-    # SEND TO CELERY
-    # --------------------------------------------------------
-
-    try:
-
-        print()
-        print("=" * 60)
-        print("SENDING VIDEO TO CELERY")
-        print(f"Filename: {filename}")
-        print(
-            f"Range: {start_time:.2f}s -> "
-            f"{end_time:.2f}s"
+        job = ProductionJob(
+            user_id=current_user.id,
+            project_id=project.id,
+            task_id=None,
+            status="queued",
+            step="queued",
+            progress=0,
+            generated=0,
+            total=10,
+            start_time=start_time,
+            end_time=end_time,
+            error=None,
+            files=json.dumps([]),
         )
-        print("=" * 60)
-        print()
 
-        task = celery_app.send_task(
-            "backend.tasks.process_video_task",
-            args=[
-                video_path,
-                start_time,
-                end_time,
-            ],
-        )
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+
+        # ====================================================
+        # CHARGE CREDITS
+        # ====================================================
+
+        try:
+
+            remaining_credits = (
+                spend_generation_credits(
+                    db=db,
+                    user=current_user,
+                    amount=credits_required,
+                    job_id=job.id,
+                    duration_seconds=selected_duration,
+                )
+            )
+
+            credits_charged = credits_required
+            credit_charged_successfully = True
+
+        except ValueError as credit_error:
+
+            db.delete(job)
+            db.commit()
+
+            current_credits = get_user_credits(
+                db,
+                current_user,
+            )
+
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "code": "INSUFFICIENT_CREDITS",
+                    "message": str(credit_error),
+                    "credits_required": credits_required,
+                    "credits_available": current_credits,
+                    "duration_minutes": duration_minutes,
+                },
+            )
+
+        # ====================================================
+        # UPDATE PROJECT
+        # ====================================================
+
+        project.status = "processing"
+        db.commit()
+
+        # ====================================================
+        # UPDATE STATUS
+        # ====================================================
 
         update_status(
             filename,
@@ -1354,19 +2834,102 @@ def process_video_endpoint(
             generated=0,
             total=10,
             files=[],
-            task_id=task.id,
+            error=None,
             start_time=start_time,
             end_time=end_time,
-            error=None,
+            job_id=job.id,
         )
 
-        print(
-            f"Celery task created: {task.id}"
-        )
+        # ====================================================
+        # SEND TO CELERY
+        # ====================================================
+
+        try:
+
+            task = process_video_task.apply_async(
+                kwargs={
+                    "video_path": video_path,
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "job_id": job.id,
+                },
+                task_id=(
+                    f"clipforge-job-{job.id}"
+                ),
+            )
+
+        except Exception as celery_error:
+
+            print(
+                "CELERY QUEUE ERROR:",
+                repr(celery_error),
+            )
+
+            # ----------------------------------------------
+            # MARK JOB FAILED
+            # ----------------------------------------------
+
+            job.status = "failed"
+            job.step = "failed"
+            job.error = "Celery queue error."
+
+            project.status = "failed"
+
+            db.commit()
+
+            # ----------------------------------------------
+            # REFUND
+            # ----------------------------------------------
+
+            if (
+                credit_charged_successfully
+                and credits_charged > 0
+            ):
+
+                try:
+
+                    refund_generation_credits(
+                        db=db,
+                        user_id=current_user.id,
+                        job_id=job.id,
+                        reason="Celery queue failed",
+                    )
+
+                    credit_charged_successfully = False
+
+                except Exception as refund_error:
+
+                    print(
+                        "CREDIT REFUND ERROR:",
+                        repr(refund_error),
+                    )
+
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "Video processing queue "
+                    "ga qo'shilmadi. "
+                    "Credit qaytarildi."
+                ),
+            )
+
+        # ====================================================
+        # SAVE CELERY TASK ID
+        # ====================================================
+
+        job.task_id = task.id
+        db.commit()
+        db.refresh(job)
+
+        # ====================================================
+        # RESPONSE
+        # ====================================================
 
         return {
             "status": "queued",
             "filename": filename,
+            "project_id": project.id,
+            "job_id": job.id,
             "task_id": task.id,
             "progress": 0,
             "step": "queued",
@@ -1376,64 +2939,152 @@ def process_video_endpoint(
             "start_time": start_time,
             "end_time": end_time,
             "video_duration": total_duration,
+
+            "credits_required": credits_required,
+            "credits_charged": credits_charged,
+            "credits_remaining": remaining_credits,
+            "credits_per_minute": 1,
+            "duration_minutes": duration_minutes,
+
             "message": (
-                "Video Celery worker "
-                "queue'ga yuborildi."
+                f"Video Celery queue'ga qo'shildi. "
+                f"{credits_charged} credit sarflandi."
             ),
         }
 
-    except Exception as celery_error:
+    # ========================================================
+    # HTTP EXCEPTION
+    # ========================================================
 
-        print()
-        print("=" * 60)
-        print("CELERY ERROR")
-        print(celery_error)
+    except HTTPException:
+
+        db.rollback()
+        raise
+
+    # ========================================================
+    # UNEXPECTED ERROR
+    # ========================================================
+
+    except Exception as e:
+
+        db.rollback()
+
         print(
-            "Starting local BackgroundTasks fallback..."
-        )
-        print("=" * 60)
-        print()
-
-        update_status(
-            filename,
-            status="processing",
-            step="background_fallback",
-            progress=5,
-            generated=0,
-            total=10,
-            files=[],
-            task_id=None,
-            start_time=start_time,
-            end_time=end_time,
-            error=None,
+            "CELERY PROCESS ERROR:",
+            repr(e),
         )
 
-        background_tasks.add_task(
-            process_video_background,
-            filename,
-            video_path,
-            start_time,
-            end_time,
+        traceback.print_exc()
+
+        # ====================================================
+        # REFUND
+        # ====================================================
+
+        if (
+            credit_charged_successfully
+            and credits_charged > 0
+        ):
+
+            try:
+
+                refund_generation_credits(
+                    db=db,
+                    user_id=current_user.id,
+                    job_id=job.id,
+                    reason="Unexpected processing error",
+                )
+
+            except Exception as refund_error:
+
+                print(
+                    "CREDIT REFUND ERROR:",
+                    repr(refund_error),
+                )
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(e),
         )
+
+    finally:
+
+        db.close()
+
+@app.post("/process-cancel/{job_id}")
+def cancel_process(
+    job_id: int,
+    current_user=Depends(get_current_user),
+):
+    """Cancel a queued/running Celery AI job."""
+    if current_user is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    db = SessionLocal()
+    try:
+        job = (
+            db.query(ProductionJob)
+            .filter(
+                ProductionJob.id == job_id,
+                ProductionJob.user_id == current_user.id,
+            )
+            .first()
+        )
+        if not job:
+            raise HTTPException(status_code=404, detail="Job topilmadi.")
+
+        if job.status in ["completed", "error", "cancelled"]:
+            return {
+                "status": job.status,
+                "job_id": job.id,
+                "message": "Job allaqachon yakunlangan.",
+            }
+
+        # DB is the source of truth. The task checks this value while running.
+        job.status = "cancelled"
+        job.step = "cancelled"
+        job.error = "Cancelled by user"
+        db.commit()
+
+        # Revoke prevents a queued task from starting. For an already-running
+        # task we intentionally do NOT hard-kill the worker: ai_service checks
+        # the DB cancellation flag between processing stages.
+        if job.task_id:
+            try:
+                celery_app.control.revoke(
+                    job.task_id,
+                    terminate=False,
+                )
+            except Exception as revoke_error:
+                print("CELERY REVOKE WARNING:", revoke_error)
+
+        project = (
+            db.query(Project)
+            .filter(Project.id == job.project_id)
+            .first()
+        )
+
+        if project:
+            _set_project_status_from_jobs(db, project.id)
+            _clear_processing_status(project.filename)
+            db.commit()
 
         return {
-            "status": "processing",
-            "filename": filename,
-            "task_id": None,
-            "progress": 5,
-            "step": "background_fallback",
-            "generated": 0,
-            "total": 10,
-            "files": [],
-            "start_time": start_time,
-            "end_time": end_time,
-            "video_duration": total_duration,
-            "message": (
-                "Celery ishlamadi. "
-                "Local BackgroundTasks "
-                "ishga tushdi."
-            ),
+            "status": "cancelled",
+            "job_id": job.id,
+            "project_id": job.project_id,
+            "task_id": job.task_id,
+            "message": "AI processing cancelled.",
         }
+
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        print("CANCEL ERROR:", repr(e))
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
 
 
 # ============================================================
@@ -1443,242 +3094,99 @@ def process_video_endpoint(
 @app.get("/process-status/{filename}")
 def process_status(
     filename: str,
+    current_user=Depends(get_current_user),
 ):
-
-    filename = os.path.basename(
-        filename
-    )
-
-    # --------------------------------------------------------
-    # GET LOCAL STATUS
-    # --------------------------------------------------------
-
-    with PROCESSING_LOCK:
-
-        local_status = (
-            PROCESSING_STATUS.get(
-                filename,
-                {}
-            ).copy()
+    if current_user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Not authenticated",
         )
 
-    if not local_status:
+    filename = os.path.basename(filename)
+    db = SessionLocal()
+    try:
+        project = db.query(Project).filter(
+            Project.filename == filename,
+            Project.user_id == current_user.id,
+        ).first()
+
+        if not project:
+            raise HTTPException(
+                status_code=404,
+                detail="Project not found",
+            )
+
+        job = db.query(ProductionJob).filter(
+            ProductionJob.project_id == project.id,
+            ProductionJob.user_id == current_user.id,
+        ).order_by(ProductionJob.id.desc()).first()
+
+        if not job:
+            return {
+                "status": "not_found",
+                "filename": filename,
+                "project_id": project.id,
+                "job_id": None,
+                "task_id": None,
+                "progress": 0,
+                "step": "not_found",
+                "generated": 0,
+                "total": 0,
+                "files": [],
+                "error": None,
+            }
+
+        # ProductionJob is the authoritative status store. Celery task_id is
+        # returned for cancel/debugging; the frontend does not need to poll Redis.
+        try:
+            files = json.loads(job.files or "[]")
+        except Exception:
+            files = []
+
+        # If the DB says completed but the files list is empty, recover it
+        # from GeneratedVideo rows.
+        if job.status == "completed" and not files:
+            generated = db.query(GeneratedVideo).filter(
+                GeneratedVideo.project_id == project.id,
+                GeneratedVideo.user_id == current_user.id,
+                GeneratedVideo.production_id == job.id,
+            ).order_by(GeneratedVideo.id.asc()).all()
+            files = [v.filename for v in generated]
 
         return {
-            "status": "not_found",
+            "status": job.status,
             "filename": filename,
-            "progress": 0,
-            "step": "not_found",
-            "generated": 0,
-            "total": 0,
-            "files": [],
-            "error": None,
+            "project_id": project.id,
+            "job_id": job.id,
+            "task_id": job.task_id,
+            "progress": job.progress or 0,
+            "step": job.step or "unknown",
+            "generated": job.generated or 0,
+            "total": job.total or 0,
+            "files": files,
+            "start_time": job.start_time,
+            "end_time": job.end_time,
+            "error": job.error,
+            "created_at": (
+                job.created_at.isoformat()
+                if job.created_at else None
+            ),
+            "updated_at": (
+                job.updated_at.isoformat()
+                if job.updated_at else None
+            ),
         }
 
-    # --------------------------------------------------------
-    # CELERY STATUS
-    # --------------------------------------------------------
-
-    task_id = local_status.get(
-        "task_id"
-    )
-
-    if task_id:
-
-        try:
-
-            result = (
-                celery_app.AsyncResult(
-                    task_id
-                )
-            )
-
-            # =================================================
-            # CELERY PROGRESS
-            # =================================================
-
-            if result.state == "PROGRESS":
-
-                meta = result.info
-
-                if not isinstance(
-                    meta,
-                    dict,
-                ):
-
-                    meta = {}
-
-                progress = meta.get(
-                    "progress",
-                    local_status.get(
-                        "progress",
-                        0,
-                    ),
-                )
-
-                generated = meta.get(
-                    "generated",
-                    local_status.get(
-                        "generated",
-                        0,
-                    ),
-                )
-
-                total = meta.get(
-                    "total",
-                    local_status.get(
-                        "total",
-                        10,
-                    ),
-                )
-
-                step = meta.get(
-                    "step",
-                    local_status.get(
-                        "step",
-                        "processing",
-                    ),
-                )
-
-                files = meta.get(
-                    "files",
-                    local_status.get(
-                        "files",
-                        [],
-                    ),
-                )
-
-                update_status(
-                    filename,
-                    status="processing",
-                    step=step,
-                    progress=progress,
-                    generated=generated,
-                    total=total,
-                    files=files,
-                    error=None,
-                )
-
-            # =================================================
-            # SUCCESS
-            # =================================================
-
-            elif result.successful():
-
-                result_data = (
-                    result.result
-                )
-
-                if isinstance(
-                    result_data,
-                    dict,
-                ):
-
-                    final_files = (
-                        result_data.get(
-                            "files",
-                            [],
-                        )
-                    )
-
-                    if not final_files:
-
-                        final_files = (
-                            get_short_files()
-                        )
-
-                    update_status(
-                        filename,
-                        status="completed",
-                        step="completed",
-                        progress=100,
-                        generated=len(
-                            final_files
-                        ),
-                        total=len(
-                            final_files
-                        ),
-                        files=final_files,
-                        error=None,
-                    )
-
-            # =================================================
-            # FAILURE
-            # =================================================
-
-            elif result.failed():
-
-                error_text = str(
-                    result.result
-                )
-
-                update_status(
-                    filename,
-                    status="error",
-                    step="error",
-                    progress=0,
-                    error=error_text,
-                )
-
-            # =================================================
-            # STARTED
-            # =================================================
-
-            elif result.state == "STARTED":
-
-                update_status(
-                    filename,
-                    status="processing",
-                    step="starting",
-                    progress=max(
-                        local_status.get(
-                            "progress",
-                            5,
-                        ),
-                        5,
-                    ),
-                )
-
-            # =================================================
-            # PENDING
-            # =================================================
-
-            elif result.state == "PENDING":
-
-                update_status(
-                    filename,
-                    status="queued",
-                    step="queued",
-                    progress=local_status.get(
-                        "progress",
-                        0,
-                    ),
-                )
-
-        except Exception as e:
-
-            print(
-                f"Celery status error: {e}"
-            )
-
-    # --------------------------------------------------------
-    # FINAL STATUS
-    # --------------------------------------------------------
-
-    with PROCESSING_LOCK:
-
-        final_status = (
-            PROCESSING_STATUS.get(
-                filename,
-                {}
-            ).copy()
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("PROCESS STATUS ERROR:", e)
+        raise HTTPException(
+            status_code=500,
+            detail=str(e),
         )
-
-    return {
-        "filename": filename,
-        **final_status,
-    }
-
+    finally:
+        db.close()
 
 # ============================================================
 # DOWNLOAD
@@ -1778,12 +3286,10 @@ def youtube(
 
     except Exception as e:
 
-        print()
         print(
-            "YOUTUBE DOWNLOAD ERROR:"
+            "YOUTUBE DOWNLOAD ERROR:",
+            e,
         )
-        print(e)
-        print()
 
         error_text = str(e)
 
@@ -1799,8 +3305,7 @@ def youtube(
                 status_code=429,
                 detail=(
                     "YouTube hozir bu "
-                    "so'rovni blokladi "
-                    "(429/bot verification). "
+                    "so'rovni blokladi. "
                     "Keyinroq qayta urinib "
                     "ko'ring yoki videoni "
                     "fayl sifatida yuklang."
@@ -1931,17 +3436,16 @@ def register(
             password=hash_password(
                 user.password
             ),
+            plan="free",
+            role="user",
+            is_active=True,
         )
 
-        db.add(
-            new_user
-        )
+        db.add(new_user)
 
         db.commit()
 
-        db.refresh(
-            new_user
-        )
+        db.refresh(new_user)
 
         return {
             "status": "success",
@@ -1953,7 +3457,6 @@ def register(
     except Exception:
 
         db.rollback()
-
         raise
 
     finally:
@@ -1983,12 +3486,30 @@ def login(
             .first()
         )
 
-        if (
-            not db_user
-            or not verify_password(
-                form_data.password,
-                db_user.password,
+        if not db_user:
+
+            raise HTTPException(
+                status_code=401,
+                detail=(
+                    "Invalid email "
+                    "or password"
+                ),
             )
+
+        if not getattr(
+            db_user,
+            "is_active",
+            True,
+        ):
+
+            raise HTTPException(
+                status_code=403,
+                detail="Account is inactive",
+            )
+
+        if not verify_password(
+            form_data.password,
+            db_user.password,
         ):
 
             raise HTTPException(
@@ -2005,6 +3526,11 @@ def login(
                     db_user.id
                 ),
                 "email": db_user.email,
+                "role": getattr(
+                    db_user,
+                    "role",
+                    "user",
+                ),
             }
         )
 
@@ -2031,16 +3557,1753 @@ def me(
 
     if current_user is None:
 
-        return {
-            "status": "error",
-            "message": "Not authenticated",
-        }
+        raise HTTPException(
+            status_code=401,
+            detail="Not authenticated",
+        )
 
     return {
         "id": current_user.id,
+
         "username": current_user.username,
+
         "email": current_user.email,
+
         "plan": current_user.plan,
+
+        "ai_credits": (
+            current_user.ai_credits
+            if current_user.ai_credits is not None
+            else 0
+        ),
+
+        "credits_reset_at": (
+            current_user.credits_reset_at.isoformat()
+            if current_user.credits_reset_at
+            else None
+        ),
+
+        "role": current_user.role,
+
+        "is_active": getattr(
+            current_user,
+            "is_active",
+            True,
+        ),
+    }
+
+
+# ============================================================
+# GOOGLE CONFIG TEST
+# ============================================================
+
+@app.get("/auth/google/config")
+def google_config():
+
+    return {
+        "google_client_id_configured": bool(
+            GOOGLE_CLIENT_ID
+        ),
+        "google_client_secret_configured": bool(
+            GOOGLE_CLIENT_SECRET
+        ),
+        "google_redirect_uri": GOOGLE_REDIRECT_URI,
+        "google_admin_email": GOOGLE_ADMIN_EMAIL,
+    }
+
+
+# ============================================================
+# GOOGLE LOGIN
+# ============================================================
+
+@app.get("/auth/google")
+def google_login():
+
+    if not GOOGLE_CLIENT_ID:
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "GOOGLE_CLIENT_ID "
+                "is not configured."
+            ),
+        )
+
+    if not GOOGLE_CLIENT_SECRET:
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "GOOGLE_CLIENT_SECRET "
+                "is not configured."
+            ),
+        )
+
+    if not GOOGLE_REDIRECT_URI:
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "GOOGLE_REDIRECT_URI "
+                "is not configured."
+            ),
+        )
+
+    state = secrets.token_urlsafe(
+        32
+    )
+
+    with GOOGLE_OAUTH_LOCK:
+
+        GOOGLE_OAUTH_STATES[
+            state
+        ] = {
+            "created_at": datetime.utcnow()
+        }
+
+    params = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "response_type": "code",
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "scope": "openid email profile",
+        "state": state,
+        "access_type": "offline",
+        "prompt": "select_account",
+    }
+
+    google_url = (
+        "https://accounts.google.com/o/oauth2/v2/auth?"
+        + urlencode(params)
+    )
+
+    return RedirectResponse(
+        url=google_url
+    )
+
+
+# ============================================================
+# GOOGLE CALLBACK
+# ============================================================
+
+@app.get("/auth/google/callback")
+async def google_callback(
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+):
+
+    frontend_url = (
+        "http://localhost:3000"
+    )
+
+    if error:
+
+        return RedirectResponse(
+            url=(
+                f"{frontend_url}/login"
+                f"?error=google_auth_failed"
+            )
+        )
+
+    if not code:
+
+        return RedirectResponse(
+            url=(
+                f"{frontend_url}/login"
+                f"?error=missing_code"
+            )
+        )
+
+    if not state:
+
+        return RedirectResponse(
+            url=(
+                f"{frontend_url}/login"
+                f"?error=missing_state"
+            )
+        )
+
+    with GOOGLE_OAUTH_LOCK:
+
+        state_data = (
+            GOOGLE_OAUTH_STATES.pop(
+                state,
+                None,
+            )
+        )
+
+    if state_data is None:
+
+        return RedirectResponse(
+            url=(
+                f"{frontend_url}/login"
+                f"?error=invalid_state"
+            )
+        )
+
+    if not GOOGLE_CLIENT_ID:
+
+        return RedirectResponse(
+            url=(
+                f"{frontend_url}/login"
+                f"?error=google_client_id_missing"
+            )
+        )
+
+    if not GOOGLE_CLIENT_SECRET:
+
+        return RedirectResponse(
+            url=(
+                f"{frontend_url}/login"
+                f"?error=google_secret_missing"
+            )
+        )
+
+    if not GOOGLE_REDIRECT_URI:
+
+        return RedirectResponse(
+            url=(
+                f"{frontend_url}/login"
+                f"?error=google_redirect_missing"
+            )
+        )
+
+    try:
+
+        async with httpx.AsyncClient(
+            timeout=20.0
+        ) as client:
+
+            token_response = (
+                await client.post(
+                    "https://oauth2.googleapis.com/token",
+                    data={
+                        "client_id": GOOGLE_CLIENT_ID,
+                        "client_secret": GOOGLE_CLIENT_SECRET,
+                        "code": code,
+                        "grant_type": "authorization_code",
+                        "redirect_uri": GOOGLE_REDIRECT_URI,
+                    },
+                )
+            )
+
+            if token_response.status_code != 200:
+
+                print(
+                    "GOOGLE TOKEN ERROR:",
+                    token_response.text,
+                )
+
+                return RedirectResponse(
+                    url=(
+                        f"{frontend_url}/login"
+                        f"?error=google_token_failed"
+                    )
+                )
+
+            token_data = (
+                token_response.json()
+            )
+
+            google_access_token = (
+                token_data.get(
+                    "access_token"
+                )
+            )
+
+            if not google_access_token:
+
+                return RedirectResponse(
+                    url=(
+                        f"{frontend_url}/login"
+                        f"?error=no_google_access_token"
+                    )
+                )
+
+            userinfo_response = (
+                await client.get(
+                    "https://www.googleapis.com/oauth2/v3/userinfo",
+                    headers={
+                        "Authorization": (
+                            f"Bearer "
+                            f"{google_access_token}"
+                        )
+                    },
+                )
+            )
+
+            if (
+                userinfo_response.status_code
+                != 200
+            ):
+
+                print(
+                    "GOOGLE USERINFO ERROR:",
+                    userinfo_response.text,
+                )
+
+                return RedirectResponse(
+                    url=(
+                        f"{frontend_url}/login"
+                        f"?error=google_userinfo_failed"
+                    )
+                )
+
+            google_user = (
+                userinfo_response.json()
+            )
+
+    except Exception as e:
+
+        print(
+            "GOOGLE OAUTH ERROR:",
+            e,
+        )
+
+        return RedirectResponse(
+            url=(
+                f"{frontend_url}/login"
+                f"?error=google_connection_failed"
+            )
+        )
+
+    google_id = google_user.get(
+        "sub"
+    )
+
+    email = google_user.get(
+        "email"
+    )
+
+    name = (
+        google_user.get("name")
+        or google_user.get("given_name")
+        or "Google User"
+    )
+
+    email_verified = (
+        google_user.get(
+            "email_verified",
+            False,
+        )
+    )
+
+    if not google_id or not email:
+
+        return RedirectResponse(
+            url=(
+                f"{frontend_url}/login"
+                f"?error=google_user_data_missing"
+            )
+        )
+
+    if not email_verified:
+
+        return RedirectResponse(
+            url=(
+                f"{frontend_url}/login"
+                f"?error=email_not_verified"
+            )
+        )
+
+    db = SessionLocal()
+
+    try:
+
+        db_user = (
+            db.query(User)
+            .filter(
+                User.email == email
+            )
+            .first()
+        )
+
+        if db_user:
+
+            if hasattr(
+                db_user,
+                "google_id",
+            ):
+
+                db_user.google_id = (
+                    google_id
+                )
+
+            if hasattr(
+                db_user,
+                "auth_provider",
+            ):
+
+                db_user.auth_provider = (
+                    "google"
+                )
+
+            db_user.is_active = True
+
+        else:
+
+            username = (
+                name.strip()
+                .lower()
+                .replace(" ", "_")
+            )
+
+            if not username:
+                username = "google_user"
+
+            original_username = username
+            counter = 1
+
+            while (
+                db.query(User)
+                .filter(
+                    User.username
+                    == username
+                )
+                .first()
+                is not None
+            ):
+
+                username = (
+                    f"{original_username}"
+                    f"_{counter}"
+                )
+
+                counter += 1
+
+            random_password = (
+                secrets.token_urlsafe(32)
+            )
+
+            new_user_kwargs = {
+                "username": username,
+                "email": email,
+                "password": hash_password(
+                    random_password
+                ),
+                "plan": "free",
+                "role": "user",
+                "is_active": True,
+            }
+
+            if hasattr(
+                User,
+                "google_id",
+            ):
+
+                new_user_kwargs[
+                    "google_id"
+                ] = google_id
+
+            if hasattr(
+                User,
+                "auth_provider",
+            ):
+
+                new_user_kwargs[
+                    "auth_provider"
+                ] = "google"
+
+            db_user = User(
+                **new_user_kwargs
+            )
+
+            db.add(db_user)
+
+        # ====================================================
+        # ADMIN EMAIL
+        # ====================================================
+
+        if (
+            GOOGLE_ADMIN_EMAIL
+            and email.lower()
+            == GOOGLE_ADMIN_EMAIL.lower()
+        ):
+
+            db_user.role = "admin"
+
+            print(
+                "GOOGLE ADMIN ACCOUNT DETECTED:",
+                email,
+            )
+
+        db.commit()
+
+        db.refresh(db_user)
+
+        token = create_access_token(
+            {
+                "sub": str(
+                    db_user.id
+                ),
+                "email": db_user.email,
+                "role": getattr(
+                    db_user,
+                    "role",
+                    "user",
+                ),
+            }
+        )
+
+    except Exception as e:
+
+        db.rollback()
+
+        print(
+            "GOOGLE DATABASE ERROR:",
+            e,
+        )
+
+        return RedirectResponse(
+            url=(
+                f"{frontend_url}/login"
+                f"?error=google_database_error"
+            )
+        )
+
+    finally:
+
+        db.close()
+
+    return RedirectResponse(
+        url=(
+            f"{frontend_url}/auth/google/callback"
+            f"#token={token}"
+        )
+    )
+
+
+# ============================================================
+# ADMIN DASHBOARD STATS
+# ============================================================
+
+@app.get("/admin/stats")
+def admin_stats(
+    admin=Depends(
+        get_current_admin
+    ),
+):
+
+    db = SessionLocal()
+
+    try:
+
+        total_users = (
+            db.query(
+                func.count(User.id)
+            ).scalar()
+            or 0
+        )
+
+        active_users = (
+            db.query(
+                func.count(User.id)
+            )
+            .filter(
+                User.is_active == True
+            )
+            .scalar()
+            or 0
+        )
+
+        inactive_users = (
+            db.query(
+                func.count(User.id)
+            )
+            .filter(
+                User.is_active == False
+            )
+            .scalar()
+            or 0
+        )
+
+        free_users = (
+            db.query(
+                func.count(User.id)
+            )
+            .filter(
+                User.plan == "free"
+            )
+            .scalar()
+            or 0
+        )
+
+        pro_users = (
+            db.query(
+                func.count(User.id)
+            )
+            .filter(
+                User.plan == "pro"
+            )
+            .scalar()
+            or 0
+        )
+
+        admin_users = (
+            db.query(
+                func.count(User.id)
+            )
+            .filter(
+                User.role == "admin"
+            )
+            .scalar()
+            or 0
+        )
+
+        try:
+            project_files = os.listdir(
+                UPLOAD_FOLDER
+            )
+        except Exception:
+            project_files = []
+
+        try:
+            export_files = os.listdir(
+                EXPORT_FOLDER
+            )
+        except Exception:
+            export_files = []
+
+        uploaded_videos = len(
+            [
+                f
+                for f in project_files
+                if f.lower().endswith(
+                    (
+                        ".mp4",
+                        ".mov",
+                        ".avi",
+                        ".mkv",
+                        ".webm",
+                    )
+                )
+            ]
+        )
+
+        generated_shorts = len(
+            [
+                f
+                for f in export_files
+                if f.startswith("short_")
+                and f.endswith(".mp4")
+                and not f.endswith(
+                    "_raw.mp4"
+                )
+            ]
+        )
+
+        processing_jobs = 0
+
+        with PROCESSING_LOCK:
+
+            for status in (
+                PROCESSING_STATUS.values()
+            ):
+
+                if status.get(
+                    "status"
+                ) in (
+                    "queued",
+                    "processing",
+                ):
+
+                    processing_jobs += 1
+
+        return {
+            "status": "success",
+            "users": {
+                "total": total_users,
+                "active": active_users,
+                "inactive": inactive_users,
+                "free": free_users,
+                "pro": pro_users,
+                "admins": admin_users,
+            },
+            "content": {
+                "uploaded_videos": uploaded_videos,
+                "generated_shorts": generated_shorts,
+            },
+            "processing": {
+                "active_jobs": processing_jobs,
+            },
+        }
+
+    finally:
+
+        db.close()
+
+
+# ============================================================
+# ADMIN USERS
+# ============================================================
+
+@app.get("/admin/users")
+def admin_users(
+    admin=Depends(
+        get_current_admin
+    ),
+    search: str | None = Query(None),
+    plan: str | None = Query(None),
+    role: str | None = Query(None),
+    is_active: bool | None = Query(None),
+):
+
+    db = SessionLocal()
+
+    try:
+
+        query = db.query(User)
+
+        if search:
+
+            search_value = (
+                f"%{search.strip()}%"
+            )
+
+            query = query.filter(
+                (
+                    User.username.ilike(
+                        search_value
+                    )
+                    |
+                    User.email.ilike(
+                        search_value
+                    )
+                )
+            )
+
+        if plan:
+
+            query = query.filter(
+                User.plan == plan
+            )
+
+        if role:
+
+            query = query.filter(
+                User.role == role
+            )
+
+        if is_active is not None:
+
+            query = query.filter(
+                User.is_active
+                == is_active
+            )
+
+        users = (
+            query
+            .order_by(
+                User.id.desc()
+            )
+            .all()
+        )
+
+        return {
+            "status": "success",
+            "count": len(users),
+            "users": [
+                {
+                    "id": user.id,
+                    "username": user.username,
+                    "email": user.email,
+                    "plan": user.plan,
+                    "role": user.role,
+                    "is_active": getattr(
+                        user,
+                        "is_active",
+                        True,
+                    ),
+                }
+                for user in users
+            ],
+        }
+
+    finally:
+
+        db.close()
+
+
+
+# ============================================================
+# ADMIN PLANS
+# ============================================================
+
+
+@app.get("/plans")
+def get_public_plans(db: Session = Depends(get_db)):
+    plans = (
+        db.query(Plan)
+        .filter(Plan.is_active == True)
+        .order_by(Plan.price.asc())
+        .all()
+    )
+
+    return [
+        {
+            "id": plan.id,
+            "name": plan.name,
+            "display_name": plan.display_name,
+            "price": plan.price,
+            "monthly_video_limit": plan.monthly_video_limit,
+            "max_video_duration": plan.max_video_duration,
+            "max_shorts_per_video": plan.max_shorts_per_video,
+            "storage_limit_gb": plan.storage_limit_gb,
+            "features": json.loads(plan.features or "[]"),
+            "is_active": plan.is_active,
+        }
+        for plan in plans
+    ]
+
+
+@app.get("/plans")
+def get_public_plans():
+    db = SessionLocal()
+
+    try:
+        plans = (
+            db.query(Plan)
+            .order_by(Plan.id.asc())
+            .all()
+        )
+
+        return {
+            "status": "success",
+            "count": len(plans),
+            "plans": [
+                {
+                    "id": plan.id,
+                    "name": plan.name,
+                    "display_name": plan.display_name,
+                    "price": plan.price,
+                    "monthly_video_limit": plan.monthly_video_limit,
+                    "max_video_duration": plan.max_video_duration,
+                    "max_shorts_per_video": plan.max_shorts_per_video,
+                    "storage_limit_gb": plan.storage_limit_gb,
+                    "features": json.loads(plan.features or "[]"),
+                    "is_active": plan.is_active,
+                }
+                for plan in plans
+            ],
+        }
+
+    finally:
+        db.close()
+
+
+@app.get("/admin/plans/{plan_id}")
+def admin_get_plan(
+    plan_id: int,
+    admin=Depends(get_current_admin),
+):
+    db = SessionLocal()
+
+    try:
+        plan = (
+            db.query(Plan)
+            .filter(
+                Plan.id == plan_id
+            )
+            .first()
+        )
+
+        if not plan:
+            raise HTTPException(
+                status_code=404,
+                detail="Plan not found",
+            )
+
+        return {
+            "status": "success",
+            "plan": {
+                "id": plan.id,
+                "name": plan.name,
+                "display_name": plan.display_name,
+                "price": plan.price,
+                "monthly_video_limit": plan.monthly_video_limit,
+                "max_video_duration": plan.max_video_duration,
+                "max_shorts_per_video": plan.max_shorts_per_video,
+                "features": json.loads(
+                    plan.features or "[]"
+                ),
+                "is_active": plan.is_active,
+                "created_at": (
+                    plan.created_at.isoformat()
+                    if plan.created_at
+                    else None
+                ),
+                "updated_at": (
+                    plan.updated_at.isoformat()
+                    if plan.updated_at
+                    else None
+                ),
+            },
+        }
+
+    finally:
+        db.close()
+
+
+@app.post("/admin/plans")
+def admin_create_plan(
+    data: AdminPlanCreate,
+    admin=Depends(get_current_admin),
+):
+    db = SessionLocal()
+
+    try:
+        name = data.name.strip().lower()
+        display_name = data.display_name.strip()
+
+        if not name:
+            raise HTTPException(
+                status_code=400,
+                detail="Plan name is required",
+            )
+
+        if not display_name:
+            raise HTTPException(
+                status_code=400,
+                detail="Display name is required",
+            )
+
+        if data.price < 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Price cannot be negative",
+            )
+
+        if data.monthly_video_limit < 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Monthly video limit cannot be negative",
+            )
+
+        if data.max_video_duration <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Max video duration must be greater than 0",
+            )
+
+        if data.max_shorts_per_video <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Max shorts per video must be greater than 0",
+            )
+
+        existing_plan = (
+            db.query(Plan)
+            .filter(
+                Plan.name == name
+            )
+            .first()
+        )
+
+        if existing_plan:
+            raise HTTPException(
+                status_code=400,
+                detail="Plan with this name already exists",
+            )
+
+        plan = Plan(
+    name=name,
+    display_name=display_name,
+    price=data.price,
+    monthly_video_limit=data.monthly_video_limit,
+    max_video_duration=data.max_video_duration,
+    max_shorts_per_video=data.max_shorts_per_video,
+    storage_limit_gb=data.storage_limit_gb,
+    features=json.dumps(
+        data.features,
+        ensure_ascii=False,
+    ),
+    is_active=data.is_active,
+    created_at=datetime.utcnow(),
+    updated_at=datetime.utcnow(),
+)
+
+        db.add(plan)
+        db.commit()
+        db.refresh(plan)
+
+        return {
+            "status": "success",
+            "message": "Plan created successfully",
+            "plan": {
+                "id": plan.id,
+                "name": plan.name,
+                "display_name": plan.display_name,
+                "price": plan.price,
+                "monthly_video_limit": plan.monthly_video_limit,
+                "max_video_duration": plan.max_video_duration,
+                "max_shorts_per_video": plan.max_shorts_per_video,
+                "features": json.loads(
+                    plan.features or "[]"
+                ),
+                "is_active": plan.is_active,
+            },
+        }
+
+    except HTTPException:
+        db.rollback()
+        raise
+
+    except Exception as e:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(e),
+        )
+
+    finally:
+        db.close()
+
+
+@app.patch("/admin/plans/{plan_id}")
+def admin_update_plan(
+    plan_id: int,
+    data: AdminPlanUpdate,
+    admin=Depends(get_current_admin),
+):
+    db = SessionLocal()
+
+    try:
+        plan = (
+            db.query(Plan)
+            .filter(
+                Plan.id == plan_id
+            )
+            .first()
+        )
+
+        if not plan:
+            raise HTTPException(
+                status_code=404,
+                detail="Plan not found",
+            )
+
+        if data.name is not None:
+            new_name = (
+                data.name
+                .strip()
+                .lower()
+            )
+
+            if not new_name:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Plan name cannot be empty",
+                )
+
+            duplicate = (
+                db.query(Plan)
+                .filter(
+                    Plan.name == new_name,
+                    Plan.id != plan.id,
+                )
+                .first()
+            )
+
+            if duplicate:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Plan with this name already exists",
+                )
+
+            plan.name = new_name
+
+        if data.display_name is not None:
+            display_name = (
+                data.display_name.strip()
+            )
+
+            if not display_name:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Display name cannot be empty",
+                )
+
+            plan.display_name = display_name
+
+        if data.price is not None:
+            if data.price < 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Price cannot be negative",
+                )
+
+            plan.price = data.price
+
+        if data.monthly_video_limit is not None:
+            if data.monthly_video_limit < 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Monthly video limit cannot be negative",
+                )
+
+            plan.monthly_video_limit = (
+                data.monthly_video_limit
+            )
+
+        if data.max_video_duration is not None:
+            if data.max_video_duration <= 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Max video duration must be greater than 0",
+                )
+
+            plan.max_video_duration = (
+                data.max_video_duration
+            )
+
+        if data.max_shorts_per_video is not None:
+            if data.max_shorts_per_video <= 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Max shorts per video must be greater than 0",
+                )
+
+            plan.max_shorts_per_video = (
+                data.max_shorts_per_video
+            )
+
+        if data.features is not None:
+            plan.features = json.dumps(
+                data.features,
+                ensure_ascii=False,
+            )
+
+        if data.is_active is not None:
+            plan.is_active = (
+                data.is_active
+            )
+
+        db.commit()
+        db.refresh(plan)
+
+        return {
+            "status": "success",
+            "message": "Plan updated successfully",
+            "plan": {
+                "id": plan.id,
+                "name": plan.name,
+                "display_name": plan.display_name,
+                "price": plan.price,
+                "monthly_video_limit": plan.monthly_video_limit,
+                "max_video_duration": plan.max_video_duration,
+                "max_shorts_per_video": plan.max_shorts_per_video,
+                "features": json.loads(
+                    plan.features or "[]"
+                ),
+                "is_active": plan.is_active,
+            },
+        }
+
+    except HTTPException:
+        db.rollback()
+        raise
+
+    except Exception as e:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(e),
+        )
+
+    finally:
+        db.close()
+
+
+@app.delete("/admin/plans/{plan_id}")
+def admin_delete_plan(
+    plan_id: int,
+    admin=Depends(get_current_admin),
+):
+    db = SessionLocal()
+
+    try:
+        plan = (
+            db.query(Plan)
+            .filter(
+                Plan.id == plan_id
+            )
+            .first()
+        )
+
+        if not plan:
+            raise HTTPException(
+                status_code=404,
+                detail="Plan not found",
+            )
+
+        if plan.name == "free":
+            raise HTTPException(
+                status_code=400,
+                detail="Free plan cannot be deleted",
+            )
+
+        users_using_plan = (
+            db.query(User)
+            .filter(
+                User.plan == plan.name
+            )
+            .count()
+        )
+
+        if users_using_plan > 0:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Cannot delete this plan. "
+                    f"{users_using_plan} user(s) "
+                    f"are currently using it."
+                ),
+            )
+
+        db.delete(plan)
+        db.commit()
+
+        return {
+            "status": "success",
+            "message": "Plan deleted successfully",
+            "plan_id": plan_id,
+        }
+
+    except HTTPException:
+        db.rollback()
+        raise
+
+    except Exception as e:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(e),
+        )
+
+    finally:
+        db.close()
+
+
+
+# ============================================================
+# ADMIN GET USER
+# ============================================================
+
+@app.get("/admin/users/{user_id}")
+def admin_get_user(
+    user_id: int,
+    admin=Depends(
+        get_current_admin
+    ),
+):
+
+    db = SessionLocal()
+
+    try:
+
+        user = (
+            db.query(User)
+            .filter(
+                User.id == user_id
+            )
+            .first()
+        )
+
+        if not user:
+
+            raise HTTPException(
+                status_code=404,
+                detail="User not found",
+            )
+
+        return {
+            "status": "success",
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "plan": user.plan,
+                "role": user.role,
+                "is_active": getattr(
+                    user,
+                    "is_active",
+                    True,
+                ),
+            },
+        }
+
+    finally:
+
+        db.close()
+
+
+# ============================================================
+# ADMIN UPDATE USER
+# ============================================================
+
+@app.patch("/admin/users/{user_id}")
+def admin_update_user(
+    user_id: int,
+    data: AdminUserUpdate,
+    admin=Depends(get_current_admin),
+):
+
+    db = SessionLocal()
+
+    try:
+
+        user = (
+            db.query(User)
+            .filter(
+                User.id == user_id
+            )
+            .first()
+        )
+
+        if not user:
+
+            raise HTTPException(
+                status_code=404,
+                detail="User not found",
+            )
+
+        # ====================================================
+        # UPDATE USERNAME
+        # ====================================================
+
+        if data.username is not None:
+            new_username = data.username.strip()
+
+            if not new_username:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Username cannot be empty",
+                )
+
+            existing_username = (
+                db.query(User)
+                .filter(
+                    User.username == new_username,
+                    User.id != user.id,
+                )
+                .first()
+            )
+
+            if existing_username:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Username already exists",
+                )
+
+            user.username = new_username
+
+        # ====================================================
+        # UPDATE EMAIL
+        # ====================================================
+
+        if data.email is not None:
+            new_email = data.email.strip().lower()
+
+            if not new_email:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Email cannot be empty",
+                )
+
+            existing_email = (
+                db.query(User)
+                .filter(
+                    User.email == new_email,
+                    User.id != user.id,
+                )
+                .first()
+            )
+
+            if existing_email:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Email already exists",
+                )
+
+            user.email = new_email
+
+        # ====================================================
+        # UPDATE PLAN
+        # ====================================================
+
+        if data.plan is not None:
+
+            new_plan = (
+                data.plan
+                .strip()
+                .lower()
+            )
+
+            if not new_plan:
+
+                raise HTTPException(
+                    status_code=400,
+                    detail="Plan cannot be empty",
+                )
+
+            selected_plan = (
+                db.query(Plan)
+                .filter(
+                    Plan.name == new_plan,
+                    Plan.is_active == True,
+                )
+                .first()
+            )
+
+            if not selected_plan:
+
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Active plan '{new_plan}' "
+                        "does not exist"
+                    ),
+                )
+
+            user.plan = selected_plan.name
+
+        # ====================================================
+        # UPDATE ROLE
+        # ====================================================
+
+        if data.role is not None:
+
+            new_role = (
+                data.role
+                .strip()
+                .lower()
+            )
+
+            if new_role not in (
+                "user",
+                "admin",
+            ):
+
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Role must be "
+                        "'user' or 'admin'"
+                    ),
+                )
+
+            if (
+                user.id == admin.id
+                and new_role != "admin"
+            ):
+
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "You cannot remove "
+                        "your own admin role."
+                    ),
+                )
+
+            user.role = new_role
+
+        # ====================================================
+        # UPDATE ACTIVE STATUS
+        # ====================================================
+
+        if data.is_active is not None:
+
+            if (
+                user.id == admin.id
+                and data.is_active is False
+            ):
+
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "You cannot deactivate "
+                        "your own account."
+                    ),
+                )
+
+            user.is_active = data.is_active
+
+        # ====================================================
+        # SAVE
+        # ====================================================
+
+        db.commit()
+
+        db.refresh(user)
+
+        return {
+            "status": "success",
+            "message": "User updated successfully",
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "plan": user.plan,
+                "role": user.role,
+                "is_active": getattr(
+                    user,
+                    "is_active",
+                    True,
+                ),
+            },
+        }
+
+    except HTTPException:
+
+        db.rollback()
+        raise
+
+    except Exception as e:
+
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(e),
+        )
+
+    finally:
+
+        db.close()
+
+
+# ============================================================
+# ADMIN DELETE USER
+# ============================================================
+
+@app.delete("/admin/users/{user_id}")
+def admin_delete_user(
+    user_id: int,
+    admin=Depends(
+        get_current_admin
+    ),
+):
+
+    db = SessionLocal()
+
+    try:
+
+        user = (
+            db.query(User)
+            .filter(
+                User.id == user_id
+            )
+            .first()
+        )
+
+        if not user:
+
+            raise HTTPException(
+                status_code=404,
+                detail="User not found",
+            )
+
+        if user.id == admin.id:
+
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "You cannot delete "
+                    "your own account."
+                ),
+            )
+
+        db.delete(user)
+
+        db.commit()
+
+        return {
+            "status": "success",
+            "message": (
+                "User deleted successfully"
+            ),
+            "user_id": user_id,
+        }
+
+    except HTTPException:
+
+        db.rollback()
+        raise
+
+    except Exception as e:
+
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(e),
+        )
+
+    finally:
+
+        db.close()
+
+
+# ============================================================
+# ADMIN SYSTEM STATUS
+# ============================================================
+
+@app.get("/admin/system")
+def admin_system(
+    admin=Depends(
+        get_current_admin
+    ),
+):
+
+    celery_status = "unknown"
+
+    workers = []
+
+    try:
+
+        inspector = (
+            celery_app.control.inspect()
+        )
+
+        ping = inspector.ping()
+
+        if ping:
+
+            celery_status = "running"
+
+            workers = list(
+                ping.keys()
+            )
+
+        else:
+
+            celery_status = (
+                "worker_not_found"
+            )
+
+    except Exception as e:
+
+        celery_status = str(e)
+
+    processing = []
+
+    with PROCESSING_LOCK:
+
+        for filename, status in (
+            PROCESSING_STATUS.items()
+        ):
+
+            processing.append(
+                {
+                    "filename": filename,
+                    "status": status.get(
+                        "status"
+                    ),
+                    "step": status.get(
+                        "step"
+                    ),
+                    "progress": status.get(
+                        "progress",
+                        0,
+                    ),
+                    "generated": status.get(
+                        "generated",
+                        0,
+                    ),
+                    "total": status.get(
+                        "total",
+                        0,
+                    ),
+                }
+            )
+
+    return {
+        "status": "success",
+        "api": "running",
+        "celery": {
+            "status": celery_status,
+            "workers": workers,
+        },
+        "processing": processing,
+    }
+
+
+# ============================================================
+# ADMIN PROCESSING JOBS
+# ============================================================
+
+@app.get("/admin/processing")
+def admin_processing(
+    admin=Depends(get_current_admin),
+):
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(ProductionJob, Project)
+            .join(Project, Project.id == ProductionJob.project_id)
+            .filter(ProductionJob.status.in_(["queued", "processing"]))
+            .order_by(ProductionJob.id.asc())
+            .all()
+        )
+        jobs = []
+        for job, project in rows:
+            jobs.append({
+                "id": job.id,
+                "filename": project.filename,
+                "project_id": project.id,
+                "user_id": job.user_id,
+                "status": job.status,
+                "step": job.step,
+                "progress": job.progress or 0,
+                "generated": job.generated or 0,
+                "total": job.total or 10,
+                "error": job.error,
+            })
+        return {"status": "success", "count": len(jobs), "jobs": jobs}
+    finally:
+        db.close()
+
+
+# ============================================================
+# ADMIN EXPORTS
+# ============================================================
+
+@app.get("/admin/exports")
+def admin_exports(
+    admin=Depends(
+        get_current_admin
+    ),
+):
+
+    try:
+
+        files = os.listdir(
+            EXPORT_FOLDER
+        )
+
+    except Exception:
+
+        files = []
+
+    files = [
+        file
+        for file in files
+        if file.endswith(".mp4")
+        and file.startswith("short_")
+        and not file.endswith(
+            "_raw.mp4"
+        )
+    ]
+
+    files.sort()
+
+    return {
+        "status": "success",
+        "count": len(files),
+        "files": files,
     }
 
 
@@ -2055,3 +5318,5 @@ app.mount(
     ),
     name="exports",
 )
+
+

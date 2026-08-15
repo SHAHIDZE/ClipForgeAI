@@ -1,0 +1,971 @@
+/* =========================================================
+   CLIPFORGE TIMELINE
+========================================================= */
+
+.cf-timeline {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  overflow: hidden;
+
+  background: #0b0d12;
+  color: #f4f4f5;
+
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+
+  box-sizing: border-box;
+}
+
+.cf-timeline *,
+.cf-timeline *::before,
+.cf-timeline *::after {
+  box-sizing: border-box;
+}
+
+/* =========================================================
+   HEADER
+========================================================= */
+
+.cf-timeline-header {
+  height: 48px;
+  min-height: 48px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 0 14px;
+
+  background: #11141a;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+
+  flex-shrink: 0;
+}
+
+.cf-timeline-header-left {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+
+  min-width: 150px;
+}
+
+.cf-timeline-title {
+  color: #f4f4f5;
+
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.cf-timeline-track-count {
+  color: #646a76;
+
+  font-size: 10px;
+  font-weight: 500;
+}
+
+/* =========================================================
+   ACTIONS
+========================================================= */
+
+.cf-timeline-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.cf-timeline-actions button {
+  height: 28px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 0 10px;
+
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+
+  background: #181b22;
+  color: #bfc3cc;
+
+  font-size: 10px;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.cf-timeline-actions button:hover:not(:disabled) {
+  background: #222630;
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+}
+
+.cf-timeline-actions button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.cf-timeline-actions button.danger:hover:not(:disabled) {
+  background: rgba(127, 29, 29, 0.25);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+}
+
+/* =========================================================
+   TOOLBAR
+========================================================= */
+
+.cf-timeline-toolbar {
+  height: 42px;
+  min-height: 42px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 0 12px;
+
+  background: #0f1218;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+
+  flex-shrink: 0;
+}
+
+.cf-timeline-tool-left {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.cf-timeline-tool-left button {
+  height: 27px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 5px;
+
+  padding: 0 9px;
+
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 5px;
+
+  background: #171a21;
+  color: #9da2ad;
+
+  font-size: 9px;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.cf-timeline-tool-left button:hover {
+  background: #20242d;
+  border-color: rgba(255, 255, 255, 0.13);
+  color: #ffffff;
+}
+
+/* =========================================================
+   ZOOM
+========================================================= */
+
+.cf-timeline-zoom {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.cf-timeline-zoom > span {
+  color: #737986;
+
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.cf-timeline-zoom input[type="range"] {
+  width: 110px;
+  height: 4px;
+
+  margin: 0;
+
+  accent-color: #8b5cf6;
+
+  cursor: pointer;
+}
+
+.cf-timeline-zoom .cf-zoom-value {
+  min-width: 38px;
+
+  text-align: right;
+
+  color: #a5a9b2;
+
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* =========================================================
+   BODY
+========================================================= */
+
+.cf-timeline-body {
+  flex: 1 1 auto;
+
+  min-width: 0;
+  min-height: 0;
+
+  width: 100%;
+
+  overflow: hidden;
+
+  display: flex;
+}
+
+/* =========================================================
+   SCROLL WRAPPER
+========================================================= */
+
+.cf-timeline-scroll-wrapper {
+  width: 100%;
+  height: 100%;
+
+  min-width: 0;
+  min-height: 0;
+
+  display: grid;
+
+  grid-template-columns: 150px minmax(0, 1fr);
+
+  overflow: auto;
+
+  scrollbar-width: thin;
+  scrollbar-color: #363a44 #101217;
+}
+
+.cf-timeline-scroll-wrapper::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.cf-timeline-scroll-wrapper::-webkit-scrollbar-track {
+  background: #101217;
+}
+
+.cf-timeline-scroll-wrapper::-webkit-scrollbar-thumb {
+  background: #363a44;
+  border-radius: 8px;
+}
+
+.cf-timeline-scroll-wrapper::-webkit-scrollbar-thumb:hover {
+  background: #4a4f5b;
+}
+
+/* =========================================================
+   TRACK LABELS
+========================================================= */
+
+.cf-track-labels {
+  min-width: 0;
+  min-height: max-content;
+
+  overflow: visible;
+
+  background: #11141a;
+
+  border-right: 1px solid rgba(255, 255, 255, 0.07);
+
+  position: sticky;
+  left: 0;
+
+  z-index: 40;
+}
+
+.cf-track-label-spacer {
+  height: 38px;
+  min-height: 38px;
+
+  background: #151820;
+
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+/* =========================================================
+   TRACK LABEL
+========================================================= */
+
+.cf-track-label {
+  height: 64px;
+  min-height: 64px;
+
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+
+  padding: 7px 10px;
+
+  background: #11141a;
+
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+
+  transition: background 0.15s ease;
+}
+
+.cf-track-label:hover {
+  background: #151920;
+}
+
+.cf-track-label.is-locked {
+  opacity: 0.65;
+}
+
+.cf-track-label-main {
+  min-width: 0;
+
+  display: flex;
+  align-items: center;
+
+  gap: 8px;
+
+  height: 22px;
+}
+
+.cf-track-type {
+  width: 18px;
+  min-width: 18px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: #a78bfa;
+
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.cf-track-label-main > span {
+  min-width: 0;
+
+  overflow: hidden;
+
+  white-space: nowrap;
+  text-overflow: ellipsis;
+
+  color: #d4d4d8;
+
+  font-size: 10px;
+  font-weight: 650;
+}
+
+/* =========================================================
+   TRACK ACTIONS
+========================================================= */
+
+.cf-track-actions {
+  display: flex;
+  align-items: center;
+
+  gap: 3px;
+
+  margin-top: 4px;
+  padding-left: 26px;
+}
+
+.cf-track-actions button {
+  width: 22px;
+  height: 18px;
+
+  display: grid;
+  place-items: center;
+
+  padding: 0;
+
+  border: 0;
+  border-radius: 4px;
+
+  background: transparent;
+
+  color: #666c77;
+
+  cursor: pointer;
+
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.cf-track-actions button:hover {
+  background: #20242d;
+  color: #e4e4e7;
+}
+
+/* =========================================================
+   TIMELINE AREA
+========================================================= */
+
+.cf-timeline-scroll {
+  min-width: 0;
+  min-height: max-content;
+
+  overflow-x: auto;
+  overflow-y: visible;
+
+  position: relative;
+
+  background: #0b0e13;
+
+  scrollbar-width: thin;
+  scrollbar-color: #373c47 #101217;
+}
+
+.cf-timeline-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.cf-timeline-scroll::-webkit-scrollbar-track {
+  background: #101217;
+}
+
+.cf-timeline-scroll::-webkit-scrollbar-thumb {
+  background: #373c47;
+  border-radius: 8px;
+}
+
+.cf-timeline-scroll::-webkit-scrollbar-thumb:hover {
+  background: #4b515e;
+}
+
+/* =========================================================
+   CANVAS
+========================================================= */
+
+.cf-timeline-canvas {
+  position: relative;
+
+  min-height: 100%;
+
+  background: #0b0e13;
+}
+
+/* =========================================================
+   RULER
+========================================================= */
+
+.cf-timeline-ruler {
+  position: sticky;
+
+  top: 0;
+
+  z-index: 20;
+
+  width: 100%;
+  height: 38px;
+  min-height: 38px;
+
+  background: #151820;
+
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.cf-time-mark {
+  position: absolute;
+
+  top: 0;
+
+  width: 1px;
+  height: 100%;
+
+  pointer-events: none;
+
+  border-left: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.cf-time-mark::after {
+  content: "";
+
+  position: absolute;
+
+  left: -1px;
+  bottom: 0;
+
+  width: 1px;
+  height: 7px;
+
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.cf-time-mark span {
+  position: absolute;
+
+  top: 7px;
+  left: 6px;
+
+  white-space: nowrap;
+
+  color: #696e79;
+
+  font-size: 9px;
+
+  font-variant-numeric: tabular-nums;
+
+  user-select: none;
+}
+
+/* =========================================================
+   GRID
+========================================================= */
+
+.cf-timeline-grid {
+  position: absolute;
+
+  top: 38px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+
+  pointer-events: none;
+
+  z-index: 0;
+}
+
+.cf-grid-line {
+  position: absolute;
+
+  top: 0;
+  bottom: 0;
+
+  width: 1px;
+
+  background: rgba(255, 255, 255, 0.035);
+}
+
+/* =========================================================
+   TRACKS
+========================================================= */
+
+.cf-timeline-tracks {
+  position: relative;
+
+  z-index: 2;
+
+  min-height: 0;
+}
+
+.cf-timeline-track {
+  position: relative;
+
+  height: 64px;
+  min-height: 64px;
+
+  background:
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.018) 1px,
+      transparent 1px
+    );
+
+  border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+}
+
+.cf-timeline-track.is-locked {
+  background-color: rgba(255, 255, 255, 0.012);
+}
+
+.cf-timeline-track.is-hidden {
+  opacity: 0.42;
+}
+
+/* =========================================================
+   CLIPS
+========================================================= */
+
+.cf-timeline-clip {
+  position: absolute;
+
+  top: 7px;
+
+  height: 50px;
+  min-width: 12px;
+
+  overflow: hidden;
+
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 7px;
+
+  cursor: grab;
+
+  user-select: none;
+
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, 0.12),
+    0 3px 10px rgba(0, 0, 0, 0.22);
+
+  transition:
+    border-color 0.1s ease,
+    box-shadow 0.1s ease,
+    filter 0.1s ease;
+
+  touch-action: none;
+}
+
+.cf-timeline-clip:hover {
+  filter: brightness(1.08);
+
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.cf-timeline-clip:active {
+  cursor: grabbing;
+}
+
+.cf-timeline-clip.is-selected {
+  border: 2px solid #a78bfa;
+
+  box-shadow:
+    0 0 0 1px rgba(167, 139, 250, 0.25),
+    0 5px 18px rgba(0, 0, 0, 0.4);
+}
+
+/* =========================================================
+   CLIP COLORS
+========================================================= */
+
+.cf-clip-video {
+  background: linear-gradient(
+    135deg,
+    #4f46e5,
+    #6366f1
+  );
+}
+
+.cf-clip-audio {
+  background: linear-gradient(
+    135deg,
+    #0f766e,
+    #14b8a6
+  );
+}
+
+.cf-clip-caption {
+  background: linear-gradient(
+    135deg,
+    #7c3aed,
+    #8b5cf6
+  );
+}
+
+.cf-clip-overlay {
+  background: linear-gradient(
+    135deg,
+    #b45309,
+    #f59e0b
+  );
+}
+
+/* =========================================================
+   CLIP CONTENT
+========================================================= */
+
+.cf-clip-content {
+  width: 100%;
+  height: 100%;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 8px;
+
+  padding: 0 9px;
+
+  overflow: hidden;
+}
+
+.cf-clip-name {
+  min-width: 0;
+
+  overflow: hidden;
+
+  white-space: nowrap;
+  text-overflow: ellipsis;
+
+  color: #ffffff;
+
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.cf-clip-duration {
+  flex-shrink: 0;
+
+  color: rgba(255, 255, 255, 0.65);
+
+  font-size: 8px;
+
+  font-variant-numeric: tabular-nums;
+}
+
+/* =========================================================
+   RESIZE HANDLES
+========================================================= */
+
+.cf-clip-handle {
+  position: absolute;
+
+  top: 0;
+  bottom: 0;
+
+  z-index: 10;
+
+  width: 8px;
+
+  cursor: ew-resize;
+
+  background: transparent;
+}
+
+.cf-clip-handle:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.cf-clip-handle-left {
+  left: 0;
+}
+
+.cf-clip-handle-right {
+  right: 0;
+}
+
+/* =========================================================
+   PLAYHEAD
+========================================================= */
+
+.cf-timeline-playhead {
+  position: absolute;
+
+  top: 0;
+  bottom: 0;
+
+  z-index: 25;
+
+  width: 0;
+
+  pointer-events: none;
+}
+
+.cf-playhead-line {
+  position: absolute;
+
+  top: 0;
+  bottom: 0;
+
+  left: 0;
+
+  width: 1px;
+
+  background: #ef4444;
+
+  box-shadow:
+    0 0 6px rgba(239, 68, 68, 0.55);
+}
+
+.cf-playhead-head {
+  position: absolute;
+
+  top: 29px;
+  left: -5px;
+
+  width: 11px;
+  height: 11px;
+
+  border-radius: 3px 3px 6px 6px;
+
+  background: #ef4444;
+
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.45);
+}
+
+/* =========================================================
+   FOOTER
+========================================================= */
+
+.cf-timeline-footer {
+  height: 34px;
+  min-height: 34px;
+
+  display: flex;
+  align-items: center;
+
+  gap: 8px;
+
+  padding: 0 14px;
+
+  background: #11141a;
+
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+
+  color: #686d77;
+
+  font-size: 9px;
+
+  flex-shrink: 0;
+}
+
+.cf-timeline-footer strong {
+  color: #aeb2bc;
+
+  font-weight: 600;
+
+  font-variant-numeric: tabular-nums;
+}
+
+/* =========================================================
+   RESPONSIVE
+========================================================= */
+
+@media (max-width: 900px) {
+  .cf-timeline-scroll-wrapper {
+    grid-template-columns: 125px minmax(0, 1fr);
+  }
+
+  .cf-timeline-header-left {
+    min-width: 125px;
+  }
+
+  .cf-timeline-track-count {
+    display: none;
+  }
+}
+
+
+/* =========================================================
+   TABLET / SMALL SCREEN
+========================================================= */
+
+@media (max-width: 700px) {
+  .cf-timeline-header {
+    height: 46px;
+    min-height: 46px;
+    padding: 0 8px;
+  }
+
+  .cf-timeline-actions {
+    gap: 4px;
+  }
+
+  .cf-timeline-actions button {
+    height: 27px;
+    padding: 0 7px;
+    font-size: 9px;
+  }
+
+  .cf-timeline-actions button:nth-child(2) {
+    display: none;
+  }
+
+  .cf-timeline-toolbar {
+    padding: 0 8px;
+  }
+
+  .cf-timeline-tool-left {
+    gap: 4px;
+  }
+
+  .cf-timeline-tool-left button {
+    padding: 0 7px;
+  }
+
+  .cf-timeline-tool-left button:nth-child(3) {
+    display: none;
+  }
+
+  .cf-timeline-zoom {
+    gap: 5px;
+  }
+
+  .cf-timeline-zoom input[type="range"] {
+    width: 80px;
+  }
+
+  .cf-timeline-scroll-wrapper {
+    grid-template-columns: 105px minmax(0, 1fr);
+  }
+
+  .cf-track-label {
+    padding-left: 7px;
+    padding-right: 7px;
+  }
+
+  .cf-track-actions {
+    padding-left: 24px;
+  }
+}
+
+
+/* =========================================================
+   PHONE
+========================================================= */
+
+@media (max-width: 500px) {
+  .cf-timeline-title {
+    font-size: 11px;
+  }
+
+  .cf-timeline-actions button:first-child {
+    display: none;
+  }
+
+  .cf-timeline-actions button {
+    padding: 0 6px;
+  }
+
+  .cf-timeline-scroll-wrapper {
+    grid-template-columns: 92px minmax(0, 1fr);
+  }
+
+  .cf-track-label-main {
+    gap: 5px;
+  }
+
+  .cf-track-label-main > span {
+    font-size: 9px;
+  }
+
+  .cf-track-type {
+    width: 15px;
+    min-width: 15px;
+  }
+
+  .cf-track-actions {
+    padding-left: 20px;
+  }
+
+  .cf-timeline-zoom .cf-zoom-value {
+    display: none;
+  }
+
+  .cf-timeline-zoom input[type="range"] {
+    width: 65px;
+  }
+}

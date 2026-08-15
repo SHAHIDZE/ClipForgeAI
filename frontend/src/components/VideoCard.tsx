@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 type Props = {
   filename: string;
 };
@@ -7,37 +9,65 @@ type Props = {
 export default function VideoCard({
   filename,
 }: Props) {
+  const [downloading, setDownloading] =
+    useState(false);
+
   const videoUrl =
-    `http://127.0.0.1:8000/exports/${encodeURIComponent(filename)}`;
+    `http://127.0.0.1:8000/exports/${encodeURIComponent(
+      filename
+    )}`;
 
   const handleDownload = async () => {
+    if (downloading) return;
+
     try {
-      const response = await fetch(videoUrl);
+      setDownloading(true);
+
+      const response =
+        await fetch(videoUrl);
 
       if (!response.ok) {
-        throw new Error("Video download failed");
+        throw new Error(
+          "Video download failed"
+        );
       }
 
-      const blob = await response.blob();
+      const blob =
+        await response.blob();
 
-      const blobUrl = window.URL.createObjectURL(blob);
+      const blobUrl =
+        window.URL.createObjectURL(
+          blob
+        );
 
-      const link = document.createElement("a");
+      const link =
+        document.createElement("a");
 
       link.href = blobUrl;
       link.download = filename;
 
-      document.body.appendChild(link);
+      document.body.appendChild(
+        link
+      );
 
       link.click();
 
       link.remove();
 
-      window.URL.revokeObjectURL(blobUrl);
+      window.URL.revokeObjectURL(
+        blobUrl
+      );
     } catch (error) {
-      console.error("Download error:", error);
+      console.error(
+        "Download error:",
+        error
+      );
 
-      alert("Videoni yuklab bo'lmadi.");
+      alert(
+        "Videoni yuklab bo'lmadi."
+      );
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -49,35 +79,57 @@ export default function VideoCard({
         rounded-3xl
         border
         border-zinc-800
-        bg-zinc-950
+        bg-[#111113]
         shadow-xl
         shadow-black/20
         transition-all
         duration-300
         hover:-translate-y-1
         hover:border-violet-500/30
+        hover:shadow-2xl
         hover:shadow-violet-950/20
       "
     >
       {/* VIDEO */}
-      <div className="relative overflow-hidden bg-black">
+      <div
+        className="
+          relative
+          aspect-[9/16]
+          overflow-hidden
+          bg-black
+        "
+      >
         <video
+          src={videoUrl}
           controls
           preload="metadata"
+          playsInline
           className="
-            aspect-[9/16]
+            h-full
             w-full
-            bg-black
             object-cover
+            transition-transform
+            duration-500
+            group-hover:scale-[1.02]
           "
         >
-          <source
-            src={videoUrl}
-            type="video/mp4"
-          />
-
-          Your browser does not support the video tag.
+          Your browser does not support
+          the video tag.
         </video>
+
+        {/* TOP GRADIENT */}
+        <div
+          className="
+            pointer-events-none
+            absolute
+            inset-x-0
+            top-0
+            h-28
+            bg-gradient-to-b
+            from-black/70
+            to-transparent
+          "
+        />
 
         {/* AI BADGE */}
         <div
@@ -86,90 +138,189 @@ export default function VideoCard({
             absolute
             left-3
             top-3
-            rounded-lg
+            flex
+            items-center
+            gap-1.5
+            rounded-xl
             border
             border-violet-400/20
-            bg-black/70
-            px-2.5
+            bg-black/65
+            px-3
             py-1.5
-            text-[11px]
+            text-[10px]
             font-black
             uppercase
-            tracking-wider
+            tracking-widest
             text-violet-300
-            backdrop-blur-md
+            backdrop-blur-xl
           "
         >
+          <span className="text-xs">
+            ✨
+          </span>
+
           AI Generated
+        </div>
+
+        {/* NUMBER / STATUS */}
+        <div
+          className="
+            pointer-events-none
+            absolute
+            right-3
+            top-3
+            rounded-xl
+            border
+            border-emerald-400/20
+            bg-black/65
+            px-3
+            py-1.5
+            text-[10px]
+            font-bold
+            uppercase
+            tracking-wider
+            text-emerald-400
+            backdrop-blur-xl
+          "
+        >
+          Ready
         </div>
       </div>
 
       {/* INFO */}
       <div className="p-5">
-        <div className="flex items-start justify-between gap-3">
+        {/* HEADER */}
+        <div
+          className="
+            flex
+            items-start
+            justify-between
+            gap-3
+          "
+        >
           <div className="min-w-0">
-            <h3 className="truncate text-sm font-bold text-white">
+            <p
+              className="
+                mb-1
+                text-[10px]
+                font-bold
+                uppercase
+                tracking-widest
+                text-violet-400
+              "
+            >
+              Short Video
+            </p>
+
+            <h3
+              title={filename}
+              className="
+                truncate
+                text-sm
+                font-bold
+                text-white
+              "
+            >
               {filename}
             </h3>
 
-            <p className="mt-1 text-xs text-zinc-600">
+            <p
+              className="
+                mt-1.5
+                text-xs
+                text-zinc-600
+              "
+            >
               Generated by ClipForge AI
             </p>
           </div>
 
+          {/* ICON */}
           <div
             className="
               flex
-              h-8
-              w-8
+              h-9
+              w-9
               shrink-0
               items-center
               justify-center
-              rounded-lg
+              rounded-xl
+              border
+              border-violet-500/10
               bg-violet-600/10
               text-sm
+              transition
+              duration-300
+              group-hover:bg-violet-600/20
             "
           >
             ✨
           </div>
         </div>
 
+        {/* DIVIDER */}
+        <div
+          className="
+            my-5
+            h-px
+            bg-zinc-800/80
+          "
+        />
+
         {/* BUTTONS */}
-        <div className="mt-5 grid grid-cols-2 gap-3">
+        <div
+          className="
+            grid
+            grid-cols-2
+            gap-3
+          "
+        >
           {/* PREVIEW */}
           <a
             href={videoUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="
+              flex
+              items-center
+              justify-center
+              gap-2
               rounded-xl
               border
               border-zinc-800
               bg-zinc-900
-              py-2.5
-              text-center
+              py-3
               text-sm
               font-bold
-              text-white
+              text-zinc-200
               transition-all
               duration-200
-              hover:border-violet-500/40
+              hover:border-zinc-700
               hover:bg-zinc-800
+              hover:text-white
             "
           >
+            <span>▶</span>
             Preview
           </a>
 
           {/* DOWNLOAD */}
           <button
             type="button"
-            onClick={handleDownload}
+            onClick={
+              handleDownload
+            }
+            disabled={downloading}
             className="
+              flex
+              items-center
+              justify-center
+              gap-2
               rounded-xl
               bg-gradient-to-r
               from-violet-600
               to-fuchsia-600
-              py-2.5
+              py-3
               text-sm
               font-bold
               text-white
@@ -178,11 +329,36 @@ export default function VideoCard({
               transition-all
               duration-200
               hover:-translate-y-0.5
-              hover:shadow-violet-900/40
+              hover:shadow-xl
+              hover:shadow-violet-900/30
               active:translate-y-0
+              disabled:cursor-not-allowed
+              disabled:opacity-60
+              disabled:hover:translate-y-0
             "
           >
-            Download
+            {downloading ? (
+              <>
+                <span
+                  className="
+                    h-4
+                    w-4
+                    animate-spin
+                    rounded-full
+                    border-2
+                    border-white/30
+                    border-t-white
+                  "
+                />
+
+                Downloading...
+              </>
+            ) : (
+              <>
+                <span>↓</span>
+                Download
+              </>
+            )}
           </button>
         </div>
       </div>
